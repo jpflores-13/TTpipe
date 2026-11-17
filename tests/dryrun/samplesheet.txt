@@ -1,0 +1,5 @@
+Name	Condition	Replicate	Read1	Read2	Sequencing_Directory
+CI_DMSO_rep1	DMSO	rep1	R1.fastq.gz	R2.fastq.gz	tests/dryrun/
+CI_DMSO_rep2	DMSO	rep2	R1.fastq.gz	R2.fastq.gz	tests/dryrun/
+CI_2H_rep1	2H	rep1	R1.fastq.gz	R2.fastq.gz	tests/dryrun/
+CI_2H_rep2	2H	rep2	R1.fastq.gz	R2.fastq.gz	tests/dryrun/

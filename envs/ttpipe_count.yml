@@ -1,0 +1,11 @@
+name: ttpipe_count
+## HTSeq plus pandas for scripts/gene_info.py and scripts/make_count_matrix.py.
+## htseq 0.13.5 (guide version) has py36-py38 builds for linux-64 and osx-64 only (no osx-arm64);
+## Solved on linux-64 (Pioneer) on 2026-11-17 and used for a 4-sample real-data run; not tested on other platforms.
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.8
+  - htseq=0.13.5
+  - pandas

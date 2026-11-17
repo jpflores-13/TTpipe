@@ -1,0 +1,156 @@
+# Running
+
+## Launch
+
+```bash
+sbatch TTpipe.sh                 # SLURM cluster
+bash   TTpipe.sh                 # one machine (profiles/local)
+bash   TTpipe.sh -n              # dry run: list the jobs, run nothing
+sbatch TTpipe.sh --configfile config/mine.yaml    # a different (complete) config
+sbatch TTpipe.sh --profile profiles/<site>        # override the compute profile
+```
+
+Every other argument is passed to `snakemake`, so the usual options work:
+`-n` (dry run), `--until <rule>`, `-R <rule>` (rerun a rule and what depends
+on it), `--forcerun`, and so on.
+
+### What the launcher does
+
+1. Works out the profile (`--profile`, then `$TTPIPE_PROFILE`, then
+   `hpcProfile` in the config) and the output directory (a relative
+   `outputDir` goes under `$TTPIPE_OUTPUT_ROOT`, else the folder you launch
+   from).
+2. Sources `<profile>/env.sh` (makes `python3` and `conda` available).
+3. Creates a virtual environment `env/` the first time and installs
+   `config/requirements.txt` (a pinned Snakemake and the SLURM plugin).
+4. For SLURM profiles, sends the job logs to `<outputDir>/logs_slurm`.
+5. Runs Snakemake with `--rerun-incomplete --keep-going`: a job interrupted
+   half-way is redone, and one failed job does not stop the independent
+   ones.
+
+The launcher is itself a small SLURM job (1 CPU, 16 GB, 10 days; the memory
+is for building conda environments on a first run). Each rule becomes its own
+job.
+
+## Dry run
+
+```bash
+bash TTpipe.sh -n
+```
+
+Snakemake prints each job to be run, then a table of job counts per rule. It
+also checks that input files exist (FASTQ files, the STAR index, the GTF), so
+many path mistakes show up here, before anything is submitted. Dry runs send no
+email.
+
+For a samplesheet of *S* samples in *C* conditions with the defaults, the table
+has: `fastqc` 2 x *S*; `star_align`, `mapq_filter`, `mark_duplicates` *S* each;
+`split_strands` and `htseq_count` 2 x *S* each; `merge_bams` 3 x *C*; `bigwig`
+3 x *C*; one each of `scale_factors`, `gene_info`, `count_matrix`,
+`sample_table`, `deseq2`, `sankey`, `qc_summary`, `qc_report`, `multiqc`; and
+`rnk` per comparison (and `fgsea` per collection and comparison) when
+`gsea_collections` is set. (`rnk` and `fgsea` appear only with GSEA
+collections; `fastp`, `bigwig_sample` and `star_index` only when their switch
+is on.)
+
+## What is running
+
+| Stage | Rules | Notes |
+|-------|-------|-------|
+| Read QC | `fastqc` (and `fastp` if `trim: true`) | FastQC always runs on the raw reads |
+| Alignment | `star_index` (if `build_star_index`), `star_align` | STAR with `--quantMode GeneCounts`; the temp BAM is deleted later |
+| Filter | `mapq_filter`, `mark_duplicates` | MAPQ >= `min_mapq`; Picard removes duplicates |
+| Strand and tracks | `split_strands`, `merge_bams`, `scale_factors`, `bigwig` | Forward and reverse BAMs; replicates merged for tracks |
+| Counts | `gene_info`, `htseq_count`, `count_matrix` | Whole-gene counts per strand, then matrices |
+| Statistics | `sample_table`, `deseq2`, `rnk`, `fgsea`, `sankey` | One DESeq2 job for all comparisons |
+| QC | `qc_summary`, `qc_report`, `multiqc` | Read the processing outputs |
+
+[CODE_GUIDE.md](https://github.com/jpflores-13/TTpipe/blob/main/CODE_GUIDE.md)
+describes every rule in detail.
+
+## Monitoring
+
+```bash
+squeue -u $USER                         # your jobs
+tail -f TTpipe-<jobid>.out              # the launcher's own log (Snakemake's progress)
+ls <outputDir>/<sample>/logs/           # per-sample logs: one per job
+ls <outputDir>/logs/                    # logs of the jobs that are not per sample
+ls <outputDir>/logs_slurm/              # SLURM job logs
+```
+
+When a job fails Snakemake prints the failing rule, its log path and the
+command. The logs per rule are `fastqc_R1.log`, `star_align.log`,
+`mapq_filter.log`, `mark_duplicates.log`, `split_strands_forward.log`,
+`htseq_count_forward.log` and so on, in the sample's `logs/` folder; the
+DESeq2, fgsea, Sankey and QC logs are in `logs/`.
+
+## Email notifications
+
+With `TTPIPE_EMAIL` set (or `notify: email:` in the config), you get one mail
+when the workflow starts, one when it finishes, and one if any job fails (with
+the last lines of Snakemake's log). Not one per job, and none on dry runs. See
+[Configuration](configuration.qmd#notifications).
+
+## After a failure
+
+```bash
+bash unlock.sh            # release the Snakemake lock
+sbatch TTpipe.sh          # --rerun-incomplete is on; finished steps are kept
+```
+
+The lock is left behind when a run is killed (for example by the wall-time
+limit); `unlock.sh` accepts `--configfile` and `--profile` like the launcher.
+Common failures:
+
+- **Out of memory or time.** The per-rule numbers in the profile are guesses.
+  Raise `mem_mb` or `runtime` for that rule ([Cluster
+  reference](cluster.qmd#tuning-resources)) and resubmit.
+- **Missing input.** A wrong `Sequencing_Directory` or file name, or a
+  `star_index` that is not an index: the dry run shows these.
+- **Zero or tiny counts.** FASTA and GTF with different chromosome names
+  ([Setup](setup.qmd#the-chromosome-name-trap)).
+
+## Rerunning after a change
+
+Snakemake decides what to redo from file times and, by default, from changes
+to a rule's parameters, input and code. So changing a config value that a rule
+uses (for example `min_mapq` or `strandedness`) reruns that rule and what
+depends on it, and changing nothing reruns nothing. Always look at the dry run
+first: it shows what will be redone.
+
+## Running only part of the workflow
+
+Three switches decide what runs: `run_processing`, `run_analysis`, `qc_report`
+(at least one must be true). The graphs below are the rule graphs for the two
+most common partial runs.
+
+**Processing only** (`run_analysis: false`): everything up to counts, tracks and
+the QC report, with no DESeq2, GSEA or Sankey.
+
+```{mermaid}
+%%| file: img/dag_processing.mmd
+```
+
+**Analysis only** (`run_processing: false`, with `analysis_counts` pointing at a
+count matrix): the statistics and the report, with no alignment. The gene table
+is still built from the GTF.
+
+```{mermaid}
+%%| file: img/dag_analysis.mmd
+```
+
+[Recipes](recipes.qmd) shows the config for each. These diagrams are
+generated by `python scripts/make_dag.py` and must not be edited by hand.
+
+## The finished output
+
+When the last job ends you have, under `outputDir`:
+
+- `qc/TTpipe_qc_report.html` (open this first), `qc/sample_qc.tsv`, and
+  `qc/TTpipe_multiqc.html` on processing runs;
+- per sample: BAMs, `stats/`, `counts/`, logs;
+- `tracks/`, `merged/`, `counts/`, `analysis/`.
+
+The STAR BAM, the MAPQ-filtered BAM and any trimmed FASTQs are deleted
+automatically; the merged BAMs are kept. The full tree is in the
+[README](https://github.com/jpflores-13/TTpipe#output-structure).

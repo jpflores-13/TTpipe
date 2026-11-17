@@ -1,0 +1,15 @@
+name: ttpipe_qc
+## QC summary table (scripts/qc_summary.py) and the static HTML report (scripts/qc_report.py).
+## Version floors only: the scripts were developed and tested against pandas 3.1, numpy 2.5 and plotly 7.1
+## (the versions in the test venv) and use no API newer than pandas 2.2 / numpy 1.26 / plotly 5.24, but older
+## combinations are untested. Solved on linux-64 (Pioneer) on 2026-11-17 with current versions and used in a real run.
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - pandas>=2.2
+  - numpy>=1.26
+  - pyyaml>=6
+  - tabulate>=0.9
+  - plotly>=5.24

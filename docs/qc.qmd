@@ -1,0 +1,191 @@
+# Reading the QC report
+
+TTpipe writes two QC pages:
+
+- **`qc/TTpipe_qc_report.html`**: the TT-seq-specific report described here.
+- **`qc/TTpipe_multiqc.html`**: a standard MultiQC page ([below](#the-multiqc-page)).
+
+The first is a single static file (no server, nothing to install; the plotting
+library is inlined, so it works offline) that you can open locally or send to a
+collaborator. It never invents numbers: a section with no data says so, and
+every skipped section is listed in a box near the top.
+
+::: {.callout-note}
+**What the colours mean.** The traffic lights compare each sample's value with
+the thresholds in `qc_thresholds` ([Configuration](configuration.qmd#qc-thresholds)).
+The `warn` values come from the TT-seq guide's rules of thumb (unique > 70 %,
+multi-mapped < 15 %, too-short < 20 %, duplication 20-40 % typical and > 50 %
+suspect). The `fail` values are **TTpipe defaults, not literature values**:
+edit them to suit your lab and protocol. A traffic light is a prompt to look,
+not a verdict.
+:::
+
+## How the report is organised
+
+From the top:
+
+| Section | What it shows |
+|---------|---------------|
+| **Run** | Samples and conditions, mode (processing / analysis), genome label, `strandedness`, `count_strand`, trimming, MAPQ and duplicate handling, DESeq2 reference, design and alpha, output directory |
+| **Skipped or partial sections** | Every section that could not be drawn, with the reason (for example "run_processing is false") |
+| **Per-sample QC** | Sortable table: one row per sample, a traffic light per metric, and an overall status (the worst metric). Click a header to sort; hover it for the definition and thresholds |
+| **Alignment** | Stacked bars of STAR outcomes (unique, multi, too short, other unmapped), and read-pair retention from STAR input to the final deduplicated BAM |
+| **Duplication** | Picard duplicate % per sample, with the warn and fail lines |
+| **Strandedness** | % of counted reads on the annotated gene strand |
+| **rRNA content** | % of counted reads in genes annotated rRNA or Mt_rRNA |
+| **Sample correlation** | Heatmap of Pearson r (log2 CPM + 1) between all samples, and the mean correlation of each sample with its replicates |
+| **PCA** | Samples in the first two principal components, coloured by condition |
+| **Differential expression** | Up and down genes per comparison (bars and a table) |
+| **Tracks** | The scale-factor table and a list of the bigWig files (no genome plots) |
+| **Not assessed** | What this pipeline does not measure ([below](#what-is-not-assessed)) |
+| **Methods** | Each metric's definition and the thresholds in force |
+
+A metric with no data is shown as `n/a` and does not affect a sample's status.
+
+## The per-sample metrics
+
+| Metric | Definition | Direction | Default warn / fail |
+|--------|------------|-----------|---------------------|
+| Input pairs (millions) | STAR "Number of input reads" (read pairs) | higher is better | below 20 / below 5 |
+| Unique % | STAR uniquely mapped reads, % of input pairs | higher | below 70 / below 50 |
+| Multi % | STAR reads mapped to multiple loci plus to too many loci | lower | above 15 / above 30 |
+| Too short % | STAR reads unmapped because the alignment was too short | lower | above 20 / above 40 |
+| Duplicates % | Picard `PERCENT_DUPLICATION` x 100, as Picard reports it | lower | above 40 / above 50 |
+| Sense % | % of counted reads on the annotated gene strand | higher | below 90 / below 75 |
+| rRNA % | % of counted reads in genes of type rRNA or Mt_rRNA | lower | above 5 / above 15 |
+| Replicate r | Mean Pearson r of log2(CPM + 1) vs the other replicates of the condition | higher | below 0.95 / below 0.85 |
+
+A value exactly on a threshold is not penalised. The report also lists, without
+thresholds, "Other unmapped %" (too many mismatches plus other) and "Final /
+input %" (read pairs in the final BAM over STAR input pairs).
+
+### How to read each one in TT-seq
+
+- **Input pairs.** Sequencing depth after the pull-down; a very shallow
+  library gives noisy counts and unstable DESeq2 results. The cut-offs are
+  generic RNA-seq limits, not TT-seq standards.
+- **Unique, multi, too short.** As in RNA-seq. Introns are not a problem for
+  TT-seq reads; they are expected. A high too-short % often points to adapter
+  read-through or short inserts: look at the FastQC adapter content and
+  consider [trimming](recipes.qmd#trimming).
+- **Duplicates.** Picard cannot distinguish PCR duplicates from independent
+  fragments with identical ends, which highly expressed genes produce by
+  chance. TTpipe removes flagged pairs by default (the guide's setting).
+  Samples that stand out against their replicates are the ones to question.
+- **Sense %.** The check on your `strandedness` setting. The report prefers
+  the HTSeq-based value (gene-body counts on the strand-split BAMs) and falls
+  back to STAR's `ReadsPerGene` columns when the HTSeq files are missing; the
+  "Source" line says which. STAR's count covers only exonic reads, so it is a
+  rough stand-in for nascent signal. Some antisense reads are real biology, so
+  not 100 %. **If the median across samples is under 25 %**, the report adds a
+  note: most reads are on the opposite strand, which looks like the other
+  library type than the configured one.
+- **rRNA %.** Only genes annotated as rRNA count, and the mouse annotation
+  holds few of them, so this **underestimates** contamination.
+- **Replicate r.** Computed on all genes, so it is high even between
+  different conditions; it catches a failed replicate rather than telling
+  conditions apart. Genes with zero counts in both samples of a pair are
+  excluded; a pair with fewer than three expressed genes or constant counts
+  is skipped.
+
+### What a problem looks like
+
+- *One sample low on unique % or high on duplicates, replicate fine*: that
+  library is worth rerunning or flagging, but the others may be usable.
+- *Strandedness low in every sample*: wrong `strandedness`; every strand-
+  specific output (forward / reverse BAMs and tracks) is swapped, and with
+  `count_strand: sense` the counts are wrong. Fix and rerun
+  ([Recipes](recipes.qmd#strandedness-dutp-or-forward)).
+- *Sense % about half in every sample*: the library may not be strand-
+  specific, or the wrong flag set splits reads of both strands together.
+  Check the library prep.
+- *PCA: a replicate sits with another condition, or conditions do not
+  separate*: check sample labels in the samplesheet first.
+- *Correlation heatmap with one dark row or column*: that sample differs from
+  all others.
+
+## The PCA, correlation and DEG panels
+
+- **PCA.** When the analysis ran, the PCA uses the DESeq2 VST counts (the
+  most variable genes, up to 1000); otherwise it is computed from log2(CPM + 1)
+  of the count matrix. It needs at least three samples. Compare it with
+  `analysis/figures/pca.pdf`, which is DESeq2's own plot.
+- **Correlation heatmap.** The scale runs from the smallest correlation to 1.
+- **Differential expression.** The numbers are the genes passing `alpha` in each
+  comparison (from `deg_summary.tsv`), and the tested count.
+
+## The Tracks section
+
+Lists `tracks/scale_factors.tsv` (condition, mapped pairs, scale factor, source =
+`computed` or `config`) and the bigWig files with their sizes. It draws no
+genome plots; open the bigWigs in a genome browser.
+
+## What is not assessed
+
+The box "Not assessed by this pipeline" lists what the report cannot say, and
+draws no panels for them because there are no data:
+
+- **Spike-in fraction.** There is no spike-in RNA or spike-in reference, so no
+  spike-in normalisation or fraction is computed.
+- **Labeled-versus-total enrichment.** There are no total or input RNA samples
+  to compare the labeled RNA against, so labeling efficiency and unlabeled
+  carry-over are not measured.
+- **Synthesis and degradation rates.** These need total and labeled RNA plus
+  spike-in normalisation.
+
+Also not measured: the 4sU incorporation or biotin capture efficiency itself,
+and any comparison with an external dataset. A library that passes every light
+here can still have failed at the bench.
+
+## When a section is skipped
+
+The report adapts to the run mode and to what exists:
+
+- **Processing only** (`run_analysis: false`): the DEG section is skipped and the
+  PCA is computed from the counts.
+- **Analysis only** (`run_processing: false`): only metrics derivable from the
+  count matrix (replicate correlation, PCA, DEGs, and rRNA % if the matrix's gene
+  ids match `gene_info`) can be drawn; STAR, duplicate, strandedness and tracks
+  sections are skipped with the reason. Strandedness cannot be checked because
+  the strand-split counts do not exist. (The QC step reads whatever files exist
+  under `outputDir`, so leftovers of an earlier processing run in the same
+  folder would be picked up.)
+- **Report only** (`run_processing` and `run_analysis` false, `qc_report: true`):
+  uses whatever is already on disk and builds nothing.
+- A missing or unreadable input file leaves its metric blank (`n/a`) and adds a
+  note; it never stops the report.
+
+## The MultiQC page
+
+With `multiqc: true` (the default, on processing runs only) TTpipe also builds
+`qc/TTpipe_multiqc.html`, MultiQC's standard summary of the tools' own output
+files:
+
+- **FastQC** (raw reads): per-base quality, adapter content, duplication levels.
+- **fastp** (only if `trim: true`).
+- **STAR**: `Log.final.out` alignment statistics and the `ReadsPerGene` tables.
+- **Picard MarkDuplicates**: duplication metrics.
+
+Use it for the familiar FastQC views (adapter content, per-base quality) that
+the TTpipe report does not redraw. The TT-seq checks (strandedness, rRNA,
+replicate correlation, DESeq2 summary) are only in `TTpipe_qc_report.html`.
+HTSeq output is not given to MultiQC, because whether its HTSeq module
+recognises TTpipe's per-strand count files has not been checked. Extra MultiQC
+arguments go in `multiqc_extra`. MultiQC 1.14 is pinned (the version the guide
+installs).
+
+## Changing thresholds
+
+Set any of them in the config; the report's Methods section prints the active
+values:
+
+```yaml
+qc_thresholds:
+  unique_pct:   {direction: higher_is_better, warn: 80, fail: 60}
+  duplicate_pct: {direction: lower_is_better, warn: 50, fail: 70}
+```
+
+Keep `direction` as `higher_is_better` or `lower_is_better`. Only the metrics
+listed under `qc_thresholds` are judged and shown as columns of the summary
+table, so a metric you delete from the block disappears from it. The safest
+edit is to change the numbers in the full block of the shipped config.

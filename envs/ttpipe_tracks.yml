@@ -1,0 +1,11 @@
+name: ttpipe_tracks
+## samtools (merge, index, read counting), deepTools bamCoverage, python for scripts/scale_factors.py.
+## Guide versions. Solved on linux-64 (Pioneer) on 2026-11-17 and used for a 4-sample real-data run; not tested on other platforms. deepTools 3.4.2 predates Python 3.9, hence python=3.8.
+## samtools 1.12 has no osx-arm64 build on bioconda (clusters are linux-64).
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.8
+  - samtools=1.12
+  - deeptools=3.4.2

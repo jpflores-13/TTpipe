@@ -1,0 +1,199 @@
+# From Reads to Results
+
+This chapter explains, without assuming you know Snakemake, what TT-seq
+measures, how it differs from ordinary RNA-seq, and what the pipeline does
+to your reads on the way to a table of differentially transcribed genes.
+Nothing here is needed to run the pipeline, but it makes the QC report and
+the config keys much easier to follow. It contains no numbers from any
+real run.
+
+## What TT-seq measures
+
+A cell's RNA is a mixture of old and new molecules. A typical messenger RNA
+is made, spliced, exported and then lives for minutes to many hours. Ordinary
+**RNA-seq** sequences the whole pool, so what it reports is mostly RNA made
+a while ago: the **steady-state** level, which is the balance of making and
+destroying.
+
+That is a problem when you ask a question about *transcription*. Suppose you
+remove a transcription factor and want to know which genes respond directly.
+A gene whose transcription drops will still show most of its old RNA for
+hours, so RNA-seq lags behind the event, and the changes that do show up
+include indirect effects and RNA stability changes.
+
+**TT-seq** (transient transcriptome sequencing) and its close relative
+**TTchem-seq** read out the *new* RNA directly:
+
+1. **Label.** Cells are fed **4-thiouridine (4sU)**, a uridine analogue, for a
+   short pulse (minutes, not hours). Every RNA molecule that is being made
+   during the pulse picks up 4sU in place of some of its uridines. RNA made
+   before the pulse carries none.
+2. **Fragment.** The RNA is broken into short pieces. Labeled molecules are
+   therefore cut up, and each fragment that contains a 4sU keeps its label.
+3. **Tag and pull down.** The sulfur in 4sU is chemically tagged with biotin,
+   and the biotinylated fragments are captured on streptavidin beads. The
+   old, unlabeled RNA washes away.
+4. **Sequence.** The captured fragments are turned into a strand-specific
+   library and sequenced from both ends (paired-end reads).
+
+What you sequence is a snapshot of transcription during the pulse. Because
+the pulse is short, it follows changes within hours of a treatment, which is
+why TT-seq is often done as a **time course**. In the example used in this
+book, a protein is tagged with a **degron** (dTAG) so that adding a ligand
+(here called "dTAG"; **DMSO**, the solvent, is the vehicle control) makes the
+cell destroy it. Samples are collected 2, 6 and 24 hours after, and
+compared with the DMSO control. This book does not repeat what that study
+found; see the paper.
+
+## How it differs from RNA-seq, step by step
+
+| | RNA-seq | TT-seq |
+|---|---------|--------|
+| What is sequenced | The whole RNA pool (often poly(A)-selected or rRNA-depleted) | Only RNA made during the 4sU pulse |
+| What the signal reflects | Synthesis balanced by degradation | Synthesis during the pulse |
+| Reads fall on | Mostly exons (mature mRNA) | The whole transcribed region, **introns included** (nascent RNA) |
+| What you count | Reads on exons | Reads on the **whole gene body** |
+| Strand | Often not used | Used: forward and reverse strand reads are separated |
+| Normalisation | Library size is usually enough | Library size is not always enough: a global change in transcription is hard to see without a spike-in |
+
+TTpipe handles the left-hand differences in these ways: it counts whole genes
+(next section), it splits every library by strand, and it states plainly what
+it cannot normalise (see [What the numbers do not tell
+you](#what-the-numbers-do-not-tell-you)).
+
+## Why introns count
+
+An RNA polymerase copies a gene from start to end, producing a long
+**precursor** (pre-mRNA) that still contains the introns. Splicing removes the
+introns, often while the RNA is still being made, and the exons end up in the
+mature mRNA.
+
+In RNA-seq the mature mRNA dominates, so reads land on exons, and counting
+reads over exons is the right measurement. In TT-seq the labeled RNA is
+mostly precursor, which means reads land on introns as well, and an intron
+read is direct evidence that the gene was being transcribed. If you counted
+only exons, you would throw most of the signal away and weight it by how much
+of the gene happens to be exonic.
+
+So TTpipe, like the guide, runs HTSeq with `--type gene`: a read counts for a
+gene if it overlaps the gene's whole span (exons and introns). Two things
+follow:
+
+- Counts are for **genes**, not isoforms. All isoforms of a gene share one
+  count.
+- **Overlapping genes** are a source of ambiguity. With `--nonunique all` (the
+  guide's setting, kept) a read that overlaps two genes counts toward both,
+  rather than being dropped. Strand helps here, because two genes on
+  opposite strands can be told apart.
+
+## Strand: forward, reverse, sense
+
+TT-seq libraries are **strand-specific**: the library keeps track of which
+strand the RNA was transcribed from. Most protocols use a **dUTP**
+second-strand method, in which read 1 comes out *antisense* to the
+transcript and read 2 is *sense*. (Others make read 1 sense; that is the
+`forward` setting of the `strandedness` key.) TTpipe looks at each read pair's
+flags and puts it in one of two BAM files per sample:
+
+- `<sample>_forward.bam`: reads that come from RNA transcribed from the **+**
+  strand of the genome.
+- `<sample>_reverse.bam`: reads from RNA transcribed from the **-** strand.
+
+These names are about the genome strand, **not** "sense". A gene on the +
+strand has its sense reads in `forward`; a gene on the - strand has its sense
+reads in `reverse`. That is why "sense %" in the QC report is computed per
+gene from both files.
+
+## Why replicates are merged for tracks but not for statistics
+
+For a genome-browser **track** you want one clean signal per condition, so the
+pipeline merges the replicates of a condition into one BAM and writes one
+bigWig for it (plus one per strand). The height of a bigWig is a read count,
+so two conditions sequenced to different depths would look different even if
+nothing changed. TTpipe scales each condition so that the one with the most
+mapped read pairs gets a scale factor of 1 and the others are scaled up to
+match.
+
+For **statistics** each replicate stays separate, because DESeq2 needs the
+replicates to estimate how much a gene varies between them. The merged BAMs
+and the scale factors are never used by DESeq2.
+
+## What DESeq2 and GSEA add
+
+**DESeq2** takes the gene-by-sample count matrix and asks, for each gene,
+whether the counts differ between a condition and the reference condition by
+more than replicate-to-replicate noise allows. Its output is a **log2 fold
+change** (positive = more new RNA in the treatment than in the reference), a
+p-value, and an adjusted p-value that accounts for testing about twenty
+thousand genes at once.
+
+**GSEA** (gene-set enrichment analysis, here with the R package fgsea) asks a
+different question: not "which single genes changed" but "do the genes of a
+known set, such as a pathway, tend to sit at the top or the bottom of the
+list of all genes ranked by their change". It can pick up a coordinated
+shift that is too weak to pass the significance filter gene by gene.
+
+The **Sankey diagram** shows, for the genes tested in every comparison,
+whether each gene is up, down or unchanged at each time point, and how genes
+move from one category to the next across the time course.
+
+## What the QC numbers mean here, and how they differ from RNA-seq
+
+The QC report ([Reading the QC report](qc.qmd)) uses familiar numbers. Their
+meaning shifts a little for nascent RNA, and the report says plainly what it
+does not measure.
+
+- **Input read pairs, unique %, multi %, too-short %.** Read these as in any
+  RNA-seq alignment. A low unique % or a high too-short % usually points at
+  adapter content, short inserts or contamination. The `warn` limits in the
+  default config are the guide's rules of thumb.
+- **Duplicate %.** Picard flags read pairs with identical ends as duplicates.
+  In any library, highly expressed genes produce identical fragments by
+  chance, so some duplication is not a sign of PCR over-amplification;
+  Picard cannot tell the two apart. The guide treats 20-40 % as typical and
+  above 50 % as suspect. TTpipe removes the flagged pairs (`remove_duplicates`),
+  as the guide does.
+- **Sense %.** The share of counted reads on the gene's own strand. A
+  correctly configured stranded library gives a high value. Some antisense
+  signal is biology (many promoters make RNA in both directions), so 100 % is
+  not expected. A very low value means `strandedness` is set to the wrong
+  library type, which flips every strand-specific output.
+- **rRNA %.** The share of counted reads in genes annotated as rRNA. Labeled
+  RNA is not poly(A)-selected, so rRNA can matter. The mouse annotation holds
+  few rRNA loci, so this **underestimates** true contamination.
+- **Replicate correlation.** Pearson r of log counts between replicates of a
+  condition. Because gene expression spans orders of magnitude, such
+  correlations are high even between samples that differ biologically, so it
+  catches a failed replicate, not a subtle difference; use the PCA to see
+  whether conditions separate.
+
+### What the numbers do not tell you
+
+The report has a box titled "Not assessed by this pipeline". This version has:
+
+- **No spike-in.** Without a spike-in RNA added in known amounts, library-size
+  and DESeq2 normalisation assume that most genes do not change. If a
+  treatment lowers (or raises) nascent transcription everywhere, that global
+  shift cannot be seen from these data alone. The bigWig scale factors only
+  correct for sequencing depth.
+- **No labeled-versus-total comparison.** There are no total or input RNA
+  samples, so labeling efficiency and contamination with unlabeled RNA are not
+  measured.
+- **No synthesis or degradation rates.** Those need total and labeled RNA and
+  spike-in normalisation, none of which are modelled here.
+
+Keep these limits in mind when you read a result as "transcription went down":
+it means "went down relative to the other genes".
+
+## Where each step lives
+
+| Step | Rule(s) | Chapter |
+|------|---------|---------|
+| Read QC | `fastqc`, optional `fastp` | [Running](running.qmd) |
+| Alignment | `star_index`, `star_align` | [Running](running.qmd) |
+| Filter and deduplicate | `mapq_filter`, `mark_duplicates` | [Running](running.qmd) |
+| Strand split | `split_strands` | [Recipes](recipes.qmd#strandedness-dutp-or-forward) |
+| Tracks | `merge_bams`, `scale_factors`, `bigwig` | [Recipes](recipes.qmd#pinning-scale-factors) |
+| Counts | `htseq_count`, `count_matrix` | [Recipes](recipes.qmd#counting-on-the-sense-strand-only) |
+| Statistics | `deseq2`, `rnk`, `fgsea`, `sankey` | [Differential expression and GSEA](analysis.qmd) |
+| QC | `qc_summary`, `qc_report`, `multiqc` | [Reading the QC report](qc.qmd) |

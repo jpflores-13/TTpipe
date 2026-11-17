@@ -1,0 +1,13 @@
+name: ttpipe_multiqc
+## MultiQC summary of FastQC / fastp / STAR / Picard outputs.
+## conda-forge + bioconda only; set `conda config --set channel_priority strict`.
+## multiqc 1.14 is the version the TT-seq guide installs (noarch build exists on bioconda).
+## Solved on a Linux cluster; the first run failed at import with `No module named 'pkg_resources'`
+## until setuptools was pinned below 70 (see below).
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.10
+  - multiqc=1.14
+  - setuptools<70   # multiqc 1.14 imports pkg_resources, which current setuptools no longer provides (observed on a real run)

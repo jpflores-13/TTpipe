@@ -1,0 +1,336 @@
+---
+title: "Vignette: From FASTQ to Differential Transcription"
+subtitle: "A step-by-step walkthrough of TTpipe, with a worked example"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+    code-copy: true
+execute:
+  eval: false
+---
+
+::: {.callout-tip appearance="simple"}
+### Quick start
+
+If someone has already set up TTpipe on your cluster and you just want a
+run, these are the steps. Each one is explained in the sections below.
+
+1. Clone the repository and `cd` into it ([Setup](#one-time-setup)).
+2. Get a matching genome FASTA and GTF ([Reference](#the-reference)).
+3. Download the FASTQ files ([Data](#the-data)).
+4. Describe them in `samplesheet.txt` ([Samplesheet](#describe-your-samples)).
+5. Point `config/TTpipeConfig.yaml` at your reference
+   ([Config](#point-the-config-at-your-reference)).
+6. Set `TTPIPE_PROFILE` and `TTPIPE_OUTPUT_ROOT` in `~/.bashrc`
+   ([Compute site](#tell-ttpipe-which-cluster-you-are-on)).
+7. Dry run: `bash TTpipe.sh -n` ([Dry run](#dry-run)).
+8. Run: `sbatch TTpipe.sh`, then open `output/qc/TTpipe_qc_report.html`
+   ([Run](#run-it), [QC](#read-the-qc-report)).
+9. Look at the tables, tracks and figures ([Inspecting](#inspecting-the-outputs)).
+:::
+
+This page is a single walkthrough. The other chapters are reference pages;
+this one takes you from an empty directory to a finished run and a look at
+the results, in the order you would do things. **Every code block here is
+illustrative and is not executed when the book is built: no output shown on
+this page comes from a real run, and the paths and run accessions are
+placeholders.** Read [Validation status](validation.qmd) for what has
+actually been run.
+
+## The example
+
+The public dataset **GSE260914** (Magnitov et al. 2024) contains, among
+other experiments, TT-seq of mouse embryonic stem cells in which the protein
+ZFP143 is tagged with a degron (dTAG), so that adding the dTAG ligand makes
+the cell destroy it. The TT-seq samples are:
+
+| Condition | Meaning | Replicates |
+|-----------|---------|------------|
+| `DMSO` | Solvent only: the control (0 h of degradation) | 2 |
+| `2H` | 2 hours after dTAG | 2 |
+| `6H` | 6 hours after dTAG | 2 |
+| `24H` | 24 hours after dTAG | 2 |
+
+That is eight paired-end libraries. The question is: *which genes change
+their transcription at each time point compared with DMSO?* You want the
+tracks to look at, the per-gene table, the enrichment of gene sets, and a
+check that the libraries are good.
+
+## One-time setup
+
+```bash
+mkdir -p ~/ttseq_example && cd ~/ttseq_example
+git clone https://github.com/jpflores-13/TTpipe.git
+cd TTpipe
+```
+
+You need `python3` >= 3.11 and `conda` >= 24.7.1 on a **Linux** machine or
+cluster ([Setup](setup.qmd); the tool versions TTpipe pins have no macOS
+arm64 builds). You do not install STAR, samtools or R yourself: Snakemake
+builds a conda environment for each group of rules the first time it needs
+one.
+
+## The reference
+
+TTpipe needs a genome FASTA and a gene annotation (GTF) **from the same
+source**, so that chromosome names match. Here: the GENCODE mouse release M25
+annotation and the GENCODE GRCm38 primary assembly, which both call the
+chromosomes `chr1`, `chr2`, ... (these URLs were checked to exist):
+
+```bash
+mkdir -p /path/to/reference && cd /path/to/reference
+wget https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/GRCm38.primary_assembly.genome.fa.gz
+wget https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/gencode.vM25.annotation.gtf.gz
+gunzip GRCm38.primary_assembly.genome.fa.gz gencode.vM25.annotation.gtf.gz
+```
+
+Check the names match before going on:
+
+```bash
+grep '>' GRCm38.primary_assembly.genome.fa | head -3     # >chr1 ...
+awk '$3=="gene"' gencode.vM25.annotation.gtf | head -2   # first column: chr1
+```
+
+::: {.callout-warning}
+**The chromosome-name trap.** An Ensembl FASTA names chromosomes `1`, `2`,
+`X`; a GENCODE GTF names them `chr1`, `chr2`, `chrX`. The source guide pairs
+the two, and a pipeline that does so finds no genes (or fails when building
+the STAR index). TTpipe does not check for this: you must. If you prefer UCSC
+mm10, its per-chromosome files are at
+<https://hgdownload.soe.ucsc.edu/goldenPath/mm10/chromosomes/>; concatenate
+the ones you want into one FASTA and use it with the same GENCODE GTF.
+:::
+
+The STAR index is built once by TTpipe itself (next sections). It needs
+roughly 32 GB of memory or more.
+
+## The data
+
+The reads are in the European Nucleotide Archive (ENA). **Do not copy run
+accessions from a web page or another document; look them up.** The GEO page
+for GSE260914 lists the samples; the ENA read-only API lists the runs. The
+study also holds Hi-C, ChIP-seq and 4C experiments, so you must pick only the
+TT-seq runs; their experiment titles start with `TTseq`:
+
+```bash
+curl -s 'https://www.ebi.ac.uk/ena/portal/api/search?result=read_run&query=study_alias="GSE260914"&fields=run_accession,experiment_title,library_layout,fastq_ftp&format=tsv' \
+    > ena_runs.tsv
+grep TTseq ena_runs.tsv | cut -f1,2,3     # check: the titles, and that the layout is PAIRED
+```
+
+The eight TT-seq runs have titles of the form `TTseq_DMSO_rep1` or
+`TTseq_dTAG_2H_rep1`. The listing has `fastq_ftp` as two paths separated by
+`;` (read 1 and read 2). This loop downloads each run and renames it to the
+sample names used in the samplesheet below (it is illustrative: check the
+list printed by the `grep` above before running it):
+
+```bash
+mkdir -p /path/to/fastq && cd /path/to/fastq
+grep TTseq /path/to/ena_runs.tsv | while IFS=$'\t' read -r run title layout ftp; do
+    tag=$(echo "$title" | awk '{print $(NF-3)}')       # e.g. TTseq_dTAG_2H_rep1
+    tag=${tag#TTseq_}; tag=${tag#dTAG_}                # e.g. 2H_rep1
+    name="ZFP143_${tag}"
+    r1=${ftp%%;*}; r2=${ftp##*;}
+    wget -O "${name}_R1.fastq.gz" "ftp://${r1}"
+    wget -O "${name}_R2.fastq.gz" "ftp://${r2}"
+done
+ls                                                     # eight pairs, e.g. ZFP143_2H_rep1_R1.fastq.gz
+```
+
+If your site blocks FTP, download the same files over HTTPS or with
+`fasterq-dump` from the SRA Toolkit using the run accessions in the first
+column of `ena_runs.tsv`.
+
+## Describe your samples
+
+`samplesheet.txt` is tab-separated, one row per sample (one pair of FASTQ
+files). The shipped file already holds the eight samples:
+
+```
+Name              Condition  Replicate  Read1                          Read2                          Sequencing_Directory
+ZFP143_DMSO_rep1  DMSO       rep1       ZFP143_DMSO_rep1_R1.fastq.gz   ZFP143_DMSO_rep1_R2.fastq.gz   /path/to/fastq/
+ZFP143_DMSO_rep2  DMSO       rep2       ZFP143_DMSO_rep2_R1.fastq.gz   ZFP143_DMSO_rep2_R2.fastq.gz   /path/to/fastq/
+ZFP143_2H_rep1    2H         rep1       ZFP143_2H_rep1_R1.fastq.gz     ZFP143_2H_rep1_R2.fastq.gz     /path/to/fastq/
+...
+ZFP143_24H_rep2   24H        rep2       ZFP143_24H_rep2_R1.fastq.gz    ZFP143_24H_rep2_R2.fastq.gz    /path/to/fastq/
+```
+
+Replace `/path/to/fastq/` with the folder you downloaded into. `Name` is
+used in every file name; `Condition` groups the replicates; `Replicate` is
+used by DESeq2 as a batch term. Use only letters, digits, `.`, `_` and `-`.
+
+## Point the config at your reference
+
+Open `config/TTpipeConfig.yaml`. For this example you change:
+
+```yaml
+samplesheet: 'samplesheet.txt'
+genome_fasta: '/path/to/reference/GRCm38.primary_assembly.genome.fa'
+gtf: '/path/to/reference/gencode.vM25.annotation.gtf'
+star_index: '/path/to/reference/mm10_STARgenome'
+build_star_index: true        # first run only
+sjdb_overhang: 100            # read length - 1; check your read length
+strandedness: 'dUTP'          # see the note below
+reference_condition: 'DMSO'
+condition_order: ['DMSO', '2H', '6H', '24H']
+```
+
+- **`strandedness`.** `dUTP` is the guide's assumption (read 1 antisense, read
+  2 sense). TTpipe lets you state it, and the QC report's strandedness panel
+  checks it afterwards. If that panel shows most reads on the wrong strand,
+  see [Recipes](recipes.qmd#strandedness-dutp-or-forward).
+- **`sjdb_overhang`.** Read length minus one; 100 matches 101-base reads. Check
+  the read length in your FastQC report; the setting only matters when the
+  index is built.
+- **`build_star_index: true`** builds the index into `star_index` as part of
+  this run. After the first successful run set it back to `false` so that the
+  index is reused.
+- **`condition_order`** only sets the order in plots and the Sankey diagram.
+
+For gene-set enrichment, download gene sets yourself (for example mouse
+collections from MSigDB, as `.gmt` files with gene symbols) and list them:
+
+```yaml
+gsea_collections:
+  Hallmarks: '/path/to/mh.all.v2023.2.Mm.symbols.gmt'
+  GO_BP: '/path/to/m5.go.bp.v2023.2.Mm.symbols.gmt'
+```
+
+(The file names are examples; use the version you download.) Leave
+`gsea_collections: {}` to skip GSEA. Every other key keeps the guide's
+default; [Configuration](configuration.qmd) explains all of them.
+
+## Tell TTpipe which cluster you are on
+
+Put these in `~/.bashrc` once (see [Cluster reference](cluster.qmd)):
+
+```bash
+export TTPIPE_PROFILE=profiles/<your-site>          # e.g. profiles/biowulf
+export TTPIPE_OUTPUT_ROOT=/path/to/scratch/ttpipe   # where `output/` goes
+export TTPIPE_EMAIL=you@university.edu              # optional: start / finish / failure emails
+source ~/.bashrc
+```
+
+If your cluster is not one of the shipped profiles, copy
+`profiles/slurm-template` and fill in your account and partition. On one
+machine with no scheduler the default `profiles/local` is used. The
+per-rule memory and time in the profiles are starting guesses; expect to
+adjust them after a first look at what the jobs used.
+
+## Dry run
+
+```bash
+bash TTpipe.sh -n
+```
+
+This prints every job Snakemake would run, and a table that counts them by
+rule, and starts nothing. For this example you should see, for instance,
+eight `star_align` jobs (one per sample) and sixteen `fastqc` jobs (two
+mates per sample). If it stops with an error about the samplesheet or a
+config key, fix that first; the messages name the problem.
+
+## Run it
+
+```bash
+sbatch TTpipe.sh            # on a SLURM cluster
+# bash TTpipe.sh            # on one machine (profiles/local)
+```
+
+The launcher job is small; it submits each rule as its own job. The first run
+also builds the conda environments, which takes a while and needs memory, so
+the launcher asks for 16 GB. Watch progress with `squeue -u $USER`, the
+launcher's `TTpipe-<jobid>.out`, and the logs under
+`<outputDir>/<sample>/logs/` and `<outputDir>/logs/`. If a run stops, release
+the lock and resubmit; finished steps are kept:
+
+```bash
+bash unlock.sh
+sbatch TTpipe.sh
+```
+
+## Read the QC report
+
+Open `output/qc/TTpipe_qc_report.html` in a browser. Go through it in this
+order ([Reading the QC report](qc.qmd) explains each part):
+
+1. **Skipped or partial sections**: anything that could not be drawn, and why.
+2. **Per-sample QC table**: one row per sample, with a traffic light per
+   metric. Look for any sample that stands out from its replicate.
+3. **Strandedness**: the share of reads on the gene's strand. If it is low for
+   every sample, `strandedness` is set to the wrong library type.
+4. **Alignment, duplication, rRNA**: as in any RNA-seq QC.
+5. **Correlation and PCA**: replicates should sit together; conditions
+   should separate in the direction you expect from the time course.
+
+`output/qc/TTpipe_multiqc.html` is a standard MultiQC page for FastQC, STAR
+and Picard; use it if you are used to that layout.
+
+## Inspecting the outputs
+
+The layout of `output/` (see the [README](https://github.com/jpflores-13/TTpipe#output-structure)
+for the full tree):
+
+```
+output/
+├── qc/                TTpipe_qc_report.html  TTpipe_multiqc.html  sample_qc.tsv
+├── ZFP143_DMSO_rep1/  ZFP143_DMSO_rep1.bam  _forward.bam  _reverse.bam  stats/  counts/  logs/
+├── merged/            DMSO.bam  DMSO_forward.bam  ...
+├── tracks/            DMSO.bw  DMSO_forward.bw  DMSO_reverse.bw  ...  scale_factors.tsv
+├── counts/            counts_deseq2.txt  counts_forward.txt  counts_reverse.txt  gene_info.tsv
+└── analysis/          deseq2/  gsea/  figures/
+```
+
+**Tracks.** Load `tracks/*.bw` into a genome browser (for example IGV, with
+the mm10 genome whose chromosome names are `chr1`...). `DMSO_forward.bw` is
+signal from RNA transcribed from the + strand and `DMSO_reverse.bw` from the -
+strand. `tracks/scale_factors.tsv` lists the scale factor applied to each
+condition.
+
+**Differential expression.** One table per comparison:
+`analysis/deseq2/degs_2H_vs_DMSO.csv`, `..._6H_vs_DMSO.csv`,
+`..._24H_vs_DMSO.csv`. Read one in R and list the genes below the 0.01
+adjusted p-value cut-off:
+
+```r
+d <- read.csv("output/analysis/deseq2/degs_6H_vs_DMSO.csv")
+info <- read.delim("output/counts/gene_info.tsv")
+d <- merge(d, info[, c("gene_id", "gene_name")], by = "gene_id")
+sig <- subset(d, !is.na(padj) & padj < 0.01)
+head(sig[order(sig$padj), c("gene_name", "log2FoldChange", "padj")])
+```
+
+A positive `log2FoldChange` means more new RNA 6 hours after dTAG than in
+DMSO. `analysis/deseq2/deg_summary.tsv` has the numbers of up and down genes
+per comparison, and `analysis/figures/pca.pdf` is the PCA of the VST
+counts.
+
+**Gene sets.** If you gave `gsea_collections`, there is one table per
+collection and comparison, for example `analysis/gsea/Hallmarks_6H_vs_DMSO.tsv`:
+
+```r
+g <- read.delim("output/analysis/gsea/Hallmarks_6H_vs_DMSO.tsv")
+head(g[order(g$padj), c("pathway", "NES", "padj")])
+```
+
+A positive `NES` means the set sits toward the top of the ranked list (more
+transcription in 6 h than DMSO).
+
+**The Sankey diagram.** `analysis/figures/sankey.pdf` shows, for genes tested in
+all three comparisons, how many are up, down or unchanged at 2 h, 6 h and 24 h
+and how genes flow between categories. The underlying table is
+`analysis/deseq2/sankey_categories.tsv`.
+
+[Differential expression and GSEA](analysis.qmd) explains these files column by
+column.
+
+## Where to go next
+
+- A different design, or only some comparisons:
+  [Recipes](recipes.qmd#custom-comparisons-and-design).
+- Rerun only the statistics on an existing count matrix:
+  [Recipes](recipes.qmd#analysis-only-run-on-an-existing-count-matrix).
+- Per-sample tracks, trimming, pinned scale factors:
+  [Recipes](recipes.qmd).
+- Memory and time tuning: [Cluster reference](cluster.qmd#tuning-resources).

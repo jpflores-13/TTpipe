@@ -1,0 +1,100 @@
+---
+title: "Validation status"
+---
+
+This chapter records what has and has not been run, so nobody has to guess.
+It is written by hand after each test round and contains only observed facts.
+Nothing here is a benchmark or a biological result.
+
+## Automated tests (no real tools)
+
+`pytest -q tests` runs on any machine with Snakemake 8.27.1, pandas, numpy,
+plotly and pytest (no conda, no STAR). It covers:
+
+- Snakemake **dry runs** against tiny placeholder inputs (full, processing-only,
+  analysis-only, trimming, per-sample tracks, GSEA branch, bad configs rejected,
+  the FASTA/GTF chromosome-name check);
+- the Python scripts (gene table, count matrix, scale factors, QC summary, QC
+  report) on **synthetic** inputs;
+- the pure-logic parts of the R scripts (ranking, classification, design checks);
+- that the rule-graph diagrams in the docs are current.
+
+At the last run, 80 tests passed. These tests show the workflow parses and that
+the scripts behave on made-up inputs. They do **not** show that STAR, DESeq2 or any
+other tool gives good results.
+
+## Real-data test (one round, one cluster)
+
+**What was run.** Four TT-seq samples from the public GEO series GSE260914
+(mouse ESC, ZFP143 dTAG degron): DMSO and 2 h, two replicates each. Only the
+**first 3 million read pairs** of each run were used (44 nt reads), so these are the
+first reads in each file, not a random sample. The reference was the mm10 genome
+with GENCODE vM25 annotation. The workflow ran on a SLURM cluster (Case Western's Pioneer, `pioneer` profile) with per-rule conda
+environments on linux-64.
+
+**What happened.**
+
+- All 59 jobs completed, after one failure that was fixed: MultiQC 1.14 failed at
+  import (`No module named 'pkg_resources'`) because the newest setuptools no longer
+  provides it; `envs/ttpipe_multiqc.yml` now pins `setuptools<70`, and only that job
+  was re-run.
+- A first environment build also failed once because conda's package cache filled the
+  user's home-directory quota. This is a site issue, not a pipeline one; set
+  `CONDA_PKGS_DIRS` to a roomy location (see [Cluster](cluster.qmd)).
+- All six conda environments solved on linux-64, including STAR 2.7.9a with
+  samtools 1.12 and Picard 2.25.6 in one environment.
+- The QC report's parsers read the real STAR `Log.final.out`, the Picard
+  MarkDuplicates metrics, STAR `ReadsPerGene`, and the HTSeq counts without errors.
+  The MultiQC page found the FastQC, STAR and Picard reports for all four samples.
+
+**Observed values on this subset** (illustrative of the report, not a quality
+statement about the data):
+
+| Quantity | Observed range over 4 samples |
+|---|---|
+| Uniquely mapped (STAR) | 62.3 to 66.2 % |
+| Multi-mapped | 7.7 to 8.4 % |
+| Unmapped, too short | 24.2 to 29.2 % |
+| Duplication (Picard) | 22.5 to 32.1 % |
+| Reads on the gene strand (HTSeq, `sum` counting) | 86.7 to 88.4 % |
+| rRNA genes, % of counted reads | 8.5 to 12.9 % |
+| Replicate correlation (Pearson, log2 CPM) | 0.943 (DMSO), 0.956 (2 h) |
+
+Against the default thresholds in the config, the strand, rRNA and DMSO replicate
+correlation values fall in the **warn** range. The thresholds' `fail` values are
+TTpipe defaults, not literature values.
+
+DESeq2 (2 h vs DMSO, alpha 0.01) tested 11,209 genes and called 1 up and 17 down.
+With two replicates and a 3-million-pair subset this says nothing about the biology.
+
+**Measured resource use** (from Snakemake benchmark files in this run):
+STAR alignment used about 25.7 GB of memory (depends on the genome, not the number
+of reads) and the STAR index build about 28.9 GB and 36 minutes. Every other rule
+used roughly 1.2 GB or less. Run times are for 3-million-pair inputs only and do not
+extrapolate to full-depth samples; the per-rule values in the profiles remain
+starting values.
+
+## What has not been run
+
+- **Full-depth data.** The real samples have roughly 30 to 48 million pairs; none were run.
+- **Time points 6 h and 24 h**, so the **multi-comparison Sankey** (this subset has one
+  contrast, which uses the one-comparison bar chart) and multi-contrast DESeq2 are untested on real data.
+- **fgsea / GSEA.** No gene-set files were configured, so the `rnk` and `fgsea` rules did not run.
+  The Java GSEA tool was never compared with fgsea.
+- **Optional switches** on real data: `trim: true` (fastp), `strandedness: forward`,
+  `count_strand: sense`, `sample_tracks: true`, `analysis_counts`.
+- **Other clusters and platforms.** Only one cluster was used. STAR 2.7.9a, samtools
+  1.12 and HTSeq 0.13.5 have no osx-arm64 builds, so a laptop run on Apple silicon was not attempted.
+- **Spike-in, labeled-vs-total and rate analyses** do not exist in this version.
+
+## Repeating the real-data test
+
+1. List the TT-seq runs of GSE260914 with the ENA read-only API (filter
+   `study_alias="GSE260914"`; select runs whose title starts with `TTseq_`).
+2. Subsample reads, for example with `gunzip -c ... | head -n 12000000 | gzip`
+   per mate for 3 million pairs, and check that the line counts and read IDs of mate
+   1 and mate 2 match (a dropped connection can truncate a stream).
+3. Use a FASTA and GTF with the same chromosome naming, set `build_star_index: true`
+   and `sjdb_overhang` to read length minus 1.
+4. Build the environments on a node with internet
+   (`bash TTpipe.sh --conda-create-envs-only`), then submit `TTpipe.sh`.

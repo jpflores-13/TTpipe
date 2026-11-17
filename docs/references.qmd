@@ -1,0 +1,71 @@
+# References {.unnumbered}
+
+## Source workflow and data
+
+**Magnitov M, et al.** (2024) *Molecular Cell*.
+[doi 10.1016/j.molcel.2024.11.031](https://doi.org/10.1016/j.molcel.2024.11.031).
+The study whose TT-seq workflow TTpipe reimplements. Data: GEO
+[GSE260914](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE260914). The
+authors' code is at <https://github.com/magnitov/zfp143>; the scale factors the
+pipeline guide quotes come from there. TTpipe follows a pipeline guide for this
+paper; it is not the authors' code.
+
+**dietJuicer** (PhanstielLab). The pipeline layout, samplesheet and profile
+conventions TTpipe follows. <https://github.com/PhanstielLab/dietJuicer>
+
+## The method
+
+**Schwalb B, et al.** TT-seq maps the human transient transcriptome. *Science*
+**352**:1225-1228 (2016). TT-seq.
+
+**Gregersen LH, Mitter R, Svejstrup JQ.** Using TTchem-seq for profiling nascent
+transcription and measuring transcript elongation. *Nature Protocols* **15**:604-627
+(2020). TTchem-seq.
+
+**Nabet B, et al.** The dTAG system for immediate and target-specific protein
+degradation. *Nature Chemical Biology* **14**:431-441 (2018). The degron tag used
+in the example data.
+
+## Software
+
+**Snakemake.** Mölder F, et al. Sustainable data analysis with Snakemake.
+*F1000Research* **10**:33 (2021). <https://snakemake.github.io>
+
+**FastQC.** Andrews S. <https://www.bioinformatics.babraham.ac.uk/projects/fastqc/>
+
+**fastp.** Chen S, Zhou Y, Chen Y, Gu J. fastp: an ultra-fast all-in-one FASTQ
+preprocessor. *Bioinformatics* **34**:i884-i890 (2018).
+
+**STAR.** Dobin A, et al. STAR: ultrafast universal RNA-seq aligner.
+*Bioinformatics* **29**:15-21 (2013). <https://github.com/alexdobin/STAR>
+
+**samtools.** Danecek P, et al. Twelve years of SAMtools and BCFtools.
+*GigaScience* **10**:giab008 (2021). <https://github.com/samtools/samtools>
+
+**Picard.** Broad Institute. <https://broadinstitute.github.io/picard/>
+
+**deepTools.** Ramírez F, et al. deepTools2: a next generation web server for
+deep-sequencing data analysis. *Nucleic Acids Research* **44**:W160-W165 (2016).
+
+**HTSeq.** Anders S, Pyl PT, Huber W. HTSeq: a Python framework to work with
+high-throughput sequencing data. *Bioinformatics* **31**:166-169 (2015).
+<https://htseq.readthedocs.io>
+
+**DESeq2.** Love MI, Huber W, Anders S. Moderated estimation of fold change and
+dispersion for RNA-seq data with DESeq2. *Genome Biology* **15**:550 (2014).
+
+**GSEA.** Subramanian A, et al. Gene set enrichment analysis: a knowledge-based
+approach for interpreting genome-wide expression profiles. *PNAS* **102**:15545-15550
+(2005).
+
+**fgsea.** Korotkevich G, et al. Fast gene set enrichment analysis. bioRxiv (2016).
+<https://github.com/ctlab/fgsea>
+
+**MultiQC.** Ewels P, et al. MultiQC: summarize analysis results for multiple tools
+and samples in a single report. *Bioinformatics* **32**:3047-3048 (2016).
+
+**GENCODE.** Frankish A, et al. GENCODE 2021. *Nucleic Acids Research* **49**:D916-D923
+(2021). Release M25 (mouse) is the default annotation:
+<https://www.gencodegenes.org/mouse/>
+
+**MSigDB** (gene sets for GSEA). <https://www.gsea-msigdb.org/gsea/msigdb>

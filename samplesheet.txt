@@ -1,0 +1,9 @@
+Name	Condition	Replicate	Read1	Read2	Sequencing_Directory
+ZFP143_DMSO_rep1	DMSO	rep1	ZFP143_DMSO_rep1_R1.fastq.gz	ZFP143_DMSO_rep1_R2.fastq.gz	/path/to/fastq/
+ZFP143_DMSO_rep2	DMSO	rep2	ZFP143_DMSO_rep2_R1.fastq.gz	ZFP143_DMSO_rep2_R2.fastq.gz	/path/to/fastq/
+ZFP143_2H_rep1	2H	rep1	ZFP143_2H_rep1_R1.fastq.gz	ZFP143_2H_rep1_R2.fastq.gz	/path/to/fastq/
+ZFP143_2H_rep2	2H	rep2	ZFP143_2H_rep2_R1.fastq.gz	ZFP143_2H_rep2_R2.fastq.gz	/path/to/fastq/
+ZFP143_6H_rep1	6H	rep1	ZFP143_6H_rep1_R1.fastq.gz	ZFP143_6H_rep1_R2.fastq.gz	/path/to/fastq/
+ZFP143_6H_rep2	6H	rep2	ZFP143_6H_rep2_R1.fastq.gz	ZFP143_6H_rep2_R2.fastq.gz	/path/to/fastq/
+ZFP143_24H_rep1	24H	rep1	ZFP143_24H_rep1_R1.fastq.gz	ZFP143_24H_rep1_R2.fastq.gz	/path/to/fastq/
+ZFP143_24H_rep2	24H	rep2	ZFP143_24H_rep2_R1.fastq.gz	ZFP143_24H_rep2_R2.fastq.gz	/path/to/fastq/

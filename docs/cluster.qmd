@@ -1,0 +1,147 @@
+# Cluster Reference
+
+Everything specific to a compute site lives in one folder under `profiles/`. The
+config and samplesheet are the same on every cluster; what differs is set once
+per cluster, outside git.
+
+## Profiles
+
+| Folder | For | Scheduler |
+|--------|-----|-----------|
+| `profiles/biowulf/` | NIH Biowulf | SLURM (partition `norm`, no account line) |
+| `profiles/longleaf/` | UNC Longleaf | SLURM (partition `general`; names an account that is **not yours**: edit it) |
+| `profiles/pioneer/` | Case Western Pioneer | SLURM (partition `batch`; names an account that is **not yours**: edit it) |
+| `profiles/slurm-template/` | Any other SLURM cluster | SLURM; fill in the `<...>` values |
+| `profiles/local/` | One machine, no scheduler | none |
+
+Each folder has two files:
+
+- **`env.sh`**: sourced by `TTpipe.sh` and `unlock.sh`; makes `python3` and
+  `conda` available (loads a module, or your own Miniforge).
+- **`config.yaml`**: the Snakemake profile: scheduler, account, partition, and each
+  rule's threads, memory and time.
+
+A SLURM profile sets `executor: slurm`, `jobs: 100` (at most 100 jobs queued or
+running), `latency-wait: 500` (seconds Snakemake waits for files to appear on a
+network filesystem), `software-deployment-method: conda`, and
+`default-resources` (account, partition, `runtime: 4320` minutes, `mem_mb: 16000`,
+`nodes: 1`). The launcher adds `--slurm-logdir <outputDir>/logs_slurm`.
+
+## Choosing the profile
+
+In order: `--profile` on the command line, `$TTPIPE_PROFILE`, then `hpcProfile` in
+the config (default `profiles/local`). Set the variable once in `~/.bashrc` and
+leave the config alone.
+
+## Environment variables {#environment-variables}
+
+| Variable | Used for | Example |
+|----------|----------|---------|
+| `TTPIPE_PROFILE` | Which profile folder to use | `profiles/biowulf` |
+| `TTPIPE_OUTPUT_ROOT` | Folder a relative `outputDir` goes under (unset: the folder you launch from) | `/data/$USER/ttpipe` |
+| `TTPIPE_EMAIL` | Notification address (wins over `notify: email:`) | `you@university.edu` |
+| `TTPIPE_CONDA_ROOT` | Where your Miniforge lives, if not `$HOME/miniforge3` | `/data/$USER/miniforge3` |
+| `CONDA_PKGS_DIRS` | (a conda variable, not TTpipe's) Where conda caches downloaded packages. The default is inside your Miniforge, usually in `$HOME`; if home has a small quota, environment builds fail with `Disk quota exceeded` (seen on the first real run) | `/scratch/$USER/conda_pkgs` |
+
+```bash
+echo 'export TTPIPE_PROFILE=profiles/<cluster>' >> ~/.bashrc
+echo 'export TTPIPE_OUTPUT_ROOT=/path/to/scratch/ttpipe' >> ~/.bashrc
+source ~/.bashrc
+```
+
+If output appears in the folder you launched from, or jobs go to the wrong
+partition, the variable was not set in the shell that ran `sbatch`.
+
+## Conda version {#conda-version}
+
+Snakemake 8.27 (pinned in `config/requirements.txt`) needs conda >= 24.7.1. Many
+clusters' conda modules are older. Install your own Miniforge once (about 0.5 GB)
+and point at it:
+
+```bash
+wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
+bash Miniforge3-Linux-x86_64.sh -b -p $HOME/miniforge3
+export TTPIPE_CONDA_ROOT=$HOME/miniforge3      # only if it is not $HOME/miniforge3
+```
+
+`profiles/biowulf/env.sh` uses `TTPIPE_CONDA_ROOT` if it exists and otherwise `module
+load conda`; the others source Miniforge from `TTPIPE_CONDA_ROOT` (default
+`$HOME/miniforge3`). Software versions are in `envs/`: Snakemake builds one conda
+environment per group of rules on first use (by default into `.snakemake/conda`
+where you launch). The environments were solved on one Linux cluster, **not** on
+macOS arm64.
+
+## Adding a site
+
+```bash
+cp -r profiles/slurm-template profiles/<cluster>
+nano profiles/<cluster>/config.yaml     # slurm_account, slurm_partition
+nano profiles/<cluster>/env.sh          # module loads or Miniforge path
+echo 'export TTPIPE_PROFILE=profiles/<cluster>' >> ~/.bashrc
+source ~/.bashrc
+bash TTpipe.sh -n
+```
+
+`sinfo -s` lists partitions; `sacctmgr show assoc user=$USER` lists your accounts.
+Delete the `slurm_account` line if your cluster has no accounts.
+
+## Per-rule resources
+
+Rules carry only `threads:`; the profile's `set-threads` and `set-resources` give
+the rest (`mem_mb` in MB, `runtime` in minutes for SLURM). These are the shipped
+values. **They are starting guesses chosen from tool documentation and typical
+mouse-genome needs, not benchmarks of TTpipe.**
+
+| Rule | Threads | `mem_mb` | `runtime` (min) | Notes |
+|------|---------|----------|-----------------|-------|
+| `fastqc` | 4 | 4000 | 120 | per sample and mate |
+| `fastp` | 8 | 8000 | 120 | only if `trim: true` |
+| `star_index` | 16 | 48000 | 240 | only if `build_star_index: true` |
+| `star_align` | 16 | 40000 | 480 | per sample; STAR on a mouse genome needs roughly 30 GB |
+| `mapq_filter` | 8 | 4000 | 120 | |
+| `mark_duplicates` | 2 | 16000 | 240 | Picard; no Java heap is set by the rule |
+| `split_strands` | 8 | 8000 | 240 | per sample and strand |
+| `merge_bams` | 8 | 8000 | 240 | |
+| `scale_factors` | 1 | 2000 | 15 | |
+| `bigwig` | 8 | 8000 | 240 | |
+| `bigwig_sample` | 8 | 8000 | 240 | only if `sample_tracks: true` |
+| `gene_info` | 1 | 2000 | 15 | |
+| `htseq_count` | 1 | 8000 | 480 | `--order pos` buffers unmatched mates in memory |
+| `count_matrix` | 1 | 4000 | 30 | |
+| `sample_table` | 1 | 1000 | 5 | |
+| `deseq2` | 2 | 8000 | 60 | |
+| `rnk` | 1 | 2000 | 15 | |
+| `fgsea` | 2 | 8000 | 120 | |
+| `sankey` | 1 | 4000 | 30 | |
+| `qc_summary` | 1 | 2000 | 15 | |
+| `qc_report` | 2 | 8000 | 30 | |
+| `multiqc` | 1 | 4000 | 30 | |
+
+The `local` profile has no `runtime`; it sets `cores: all`, `latency-wait: 60` and a
+global `resources: mem_mb=64000`.
+
+## Tuning resources {#tuning-resources}
+
+1. **Look at what a first run used.** For SLURM jobs: `seff <jobid>` or `sacct -j
+   <jobid> --format=JobID,JobName,MaxRSS,Elapsed,State`. Snakemake also writes a
+   benchmark table per job (`<sample>/benchmarks/<rule>.tsv` or
+   `benchmarks/<rule>.tsv`) with wall time and peak memory (`max_rss`, in MB).
+2. **Edit the profile**, not the rule: raise `mem_mb` or `runtime` for the rule
+   that was killed (`OUT_OF_MEMORY` or `TIMEOUT` in `sacct`). Keep a margin.
+3. **Threads** come from `set-threads`. More threads help STAR, the samtools steps
+   and `bamCoverage`; HTSeq, DESeq2's single job and the others gain little. A rule
+   asking for more threads than your partition's nodes offer will not be scheduled.
+4. **Resubmit.** Finished jobs are kept; only the failed ones rerun.
+
+With the `local` profile the global `mem_mb=64000` limits how many jobs run at
+once. With `star_align` at 40000, only one STAR job fits at a time; lower the
+numbers or raise the limit to match your machine. A laptop with less memory than a
+STAR alignment needs cannot align a mouse genome.
+
+## Email
+
+`TTPIPE_EMAIL` and `notify:` in the config send three workflow emails (start,
+finish, failure). SLURM's own mail about the launcher job is separate:
+`sbatch --mail-user=$TTPIPE_EMAIL TTpipe.sh` (the header already sets
+`--mail-type=END,FAIL,TIME_LIMIT_80`). Check that your cluster can send mail:
+`echo test | mail -s test $TTPIPE_EMAIL`.

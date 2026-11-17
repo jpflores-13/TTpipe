@@ -1,0 +1,51 @@
+# Claude Code
+.claude/
+
+# Generated data and results (large files, not for version control)
+output/
+output_*/
+results/
+*.out
+*-[0-9]*.out
+
+# Slurm logs
+logs/
+logs_slurm/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# Conda
+.conda/
+*.conda
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Snakemake
+.snakemake/
+.snakemake
+*.snakemake.log
+
+# Docs build
+docs/_book/
+docs/.quarto/
+docs/*_files/
+
+# Misc
+*.tmp
+*.swp
+.DS_Store
+.snakemake_venv/
+env/

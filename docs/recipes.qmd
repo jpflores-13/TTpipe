@@ -1,0 +1,273 @@
+# Recipes
+
+Each recipe below is a change to `config/TTpipeConfig.yaml` (or a command), with
+what it does and what to watch out for. After any change, run
+`bash TTpipe.sh -n` first: the dry run lists what Snakemake will redo. None of
+the recipes has been run on real data by the author; they follow the code
+([Validation status](validation.qmd)).
+
+## Analysis-only run on an existing count matrix
+
+You already have a gene-by-sample count matrix (from TTpipe or elsewhere) and
+want only DESeq2, GSEA, the Sankey and the report.
+
+```yaml
+run_processing: false
+run_analysis: true
+analysis_counts: '/path/to/counts.txt'
+gtf: '/path/to/gencode.vM25.annotation.gtf'
+```
+
+- The matrix is tab-separated, the first column is `gene_id`, the header holds
+  the sample `Name`s (the same format as `counts/counts_deseq2.txt`), and the
+  values are integer counts.
+- The samplesheet needs only `Name`, `Condition` and `Replicate` (no FASTQ
+  columns). Every matrix column must equal a samplesheet `Name`, and vice versa;
+  otherwise DESeq2 stops and lists the differences.
+- `gtf` is still required: the gene table (`gene_info`) is built from it and the
+  GSEA ranking needs gene symbols. The gene ids in the matrix must be the ones in
+  the GTF (for example both with GENCODE version suffixes).
+- With `run_processing: false` and an empty `analysis_counts`, TTpipe uses
+  `<outputDir>/counts/counts_deseq2.txt` if it exists, and otherwise stops with a
+  message.
+- The QC report still runs (`qc_report: true`), limited to what a count matrix
+  allows ([Reading the QC report](qc.qmd#when-a-section-is-skipped)).
+
+The rule graph for this mode is in [Running](running.qmd#running-only-part-of-the-workflow).
+
+## Processing only
+
+Align, count and build tracks, and decide on the statistics later:
+
+```yaml
+run_analysis: false
+```
+
+You still get the counts, tracks and the QC report (with a PCA computed from
+the counts). Setting `run_analysis: true` later runs only the analysis, because
+the processing outputs already exist.
+
+## Rerunning only the statistics after a change
+
+To change `design`, `comparisons`, `alpha`, `min_count`, `gsea_*` or the
+reference condition, edit the config and run the dry run. Snakemake sees the
+changed parameters and redoes `deseq2` and what depends on it (`rnk`, `fgsea`,
+`sankey`, the QC report); the alignment and counts are untouched.
+
+## Per-sample tracks
+
+By default only per-condition tracks (replicates merged) are made. For one
+bigWig set per sample as well:
+
+```yaml
+sample_tracks: true
+```
+
+This adds `tracks/samples/<sample>.bw`, `<sample>_forward.bw` and
+`<sample>_reverse.bw`. Their scale factor is the largest final read-pair count
+among **all samples** divided by that sample's count; the `scale_factors` option
+is not used for them. Use them to check replicate agreement in a browser.
+
+## Trimming
+
+The guide runs FastQC only and says to consider trimming if adapter content is
+above 5 %. TTpipe therefore does not trim by default. To trim with fastp:
+
+```yaml
+trim: true
+fastp_extra: ''          # extra fastp arguments, e.g. '--length_required 30'
+```
+
+fastp's defaults apply (automatic paired-end adapter detection, quality
+filter, length filter) plus `fastp_extra`. STAR then aligns the trimmed reads;
+FastQC still runs on the raw reads, and fastp's JSON goes into the MultiQC
+page. The trimmed FASTQs are temporary. Changing `trim` after a run reruns the
+alignment and everything after it.
+
+## Strandedness: dUTP or forward
+
+`strandedness` states how the library was made:
+
+| Value | Meaning | Read 1 | Read 2 |
+|-------|---------|--------|--------|
+| `dUTP` (default) | dUTP second-strand protocols, including TTchem-seq; the guide's assumption | antisense to the transcript | sense |
+| `forward` | read 1 is the sense read | sense | antisense |
+
+It decides which read pairs go to `<sample>_forward.bam` (RNA transcribed from
+the + strand) and which to `_reverse.bam`. Everything strand-specific follows:
+the forward and reverse tracks, the per-strand counts and the "sense %" in the
+QC report.
+
+**How to check.** Run once and open the QC report's strandedness panel. With the
+right setting most reads fall on the gene's own strand (the default warn level is
+90 %). If the median across samples is low, and the report says most reads are on
+the opposite strand, you chose the wrong one: switch the value.
+
+**Switching.** Edit `strandedness`, run the dry run and then the pipeline.
+Snakemake sees the changed parameters of `split_strands` and redoes it and
+everything after it: the strand BAMs, the merged BAMs, tracks, HTSeq counts,
+DESeq2 and the report. The alignment and deduplication are not redone.
+
+A sample sheet whose libraries are a mix of both types is not supported:
+`strandedness` is one setting for the whole run.
+
+## Counting on the sense strand only
+
+The HTSeq counts are made per strand (`counts_forward.txt`,
+`counts_reverse.txt`); `count_strand` decides how they become the DESeq2
+matrix `counts_deseq2.txt`:
+
+```yaml
+count_strand: 'sum'      # default
+# count_strand: 'sense'
+```
+
+| Value | What it counts | Notes |
+|-------|----------------|-------|
+| `sum` | forward + reverse for each gene | Reads on either strand: includes antisense reads. This is what the guide's **code** does, and TTpipe's default |
+| `sense` | forward counts for + genes, reverse counts for - genes | Drops reads on the opposite strand. This is what the guide's **text** describes. A gene with no +/- strand falls back to forward + reverse; a counted gene missing from `gene_info.tsv` is an error |
+
+The two give different numbers. With `sum`, a gene's count includes
+transcription of anything on the other strand that overlaps it (antisense
+transcripts); with `sense` that is excluded, but a wrong `strandedness` would
+now give wrong counts, while with `sum` it would not matter for the counts.
+Choose deliberately and say which you used.
+
+## Custom comparisons and design
+
+By default every condition is compared with `reference_condition`. To choose
+comparisons yourself, list `[treatment, reference]` pairs using the samplesheet
+condition names:
+
+```yaml
+reference_condition: 'DMSO'
+condition_order: ['DMSO', '2H', '6H', '24H']
+comparisons: [['6H', '2H'], ['24H', '6H'], ['24H', 'DMSO']]
+```
+
+The result files are named `<treatment>_vs_<reference>` (here `6H_vs_2H`,
+`24H_vs_6H`, `24H_vs_DMSO`). Rules for the list:
+
+- every name must be a `Condition` in the samplesheet;
+- `condition_order`, if given, must list **exactly** the samplesheet conditions;
+- `reference_condition` must be one of them. It is the base level of the DESeq2
+  factor and the reference of the default pairs; with explicit `comparisons`
+  the results do not depend on it;
+- when comparisons do not share one reference, the Sankey axes are labelled with
+  the full comparison names.
+
+To change the model, set `design`. The columns available are `condition` and
+`replicate`, and the formula must include `condition`:
+
+```yaml
+design: '~ condition'                  # no batch term
+# design: '~ condition + replicate'    # default (the guide's ~ time + replicate)
+```
+
+Use `~ condition` when replicates are independent and the same label (`rep1`)
+in different conditions does not mean a shared batch. Anything else, such as a
+column you added to the samplesheet, is rejected: only `condition` and
+`replicate` are given to DESeq2.
+
+## Pinning scale factors
+
+Track heights are scaled so that conditions sequenced to different depths
+compare fairly. By default the scale factor is computed: the largest
+replicate-merged read-pair count among the conditions, divided by this
+condition's. To use your own values for some conditions, for example to match a
+published track set:
+
+```yaml
+scale_factors: {DMSO: 1.2757, 2H: 1}
+```
+
+Conditions you list use your number (shown as source `config` in
+`tracks/scale_factors.tsv`); the rest are computed. The maximum is taken over
+all conditions, including the ones you pinned. The values the guide quotes come
+from the authors' repository
+(<https://github.com/magnitov/zfp143>); get them from there rather than from
+this book. A name that is not a condition is an error. Only the per-condition
+tracks use this setting.
+
+## Gene-set collections for GSEA
+
+```yaml
+gsea_collections:
+  Hallmarks: '/path/to/mh.all.v2023.2.Mm.symbols.gmt'
+  Reactome: '/path/to/m2.cp.reactome.v2023.2.Mm.symbols.gmt'
+gsea_seed: 42
+```
+
+Each entry names a collection (used in the output file name, so use letters,
+digits and `_`) and a `.gmt` file with gene symbols you downloaded yourself.
+Empty `{}` skips GSEA. See [Differential expression and
+GSEA](analysis.qmd#gsea-with-fgsea).
+
+## Building or reusing the STAR index
+
+```yaml
+star_index: '/path/to/mm10_STARgenome'
+build_star_index: true     # once
+```
+
+After it has been built, set `build_star_index: false` so the index is only
+read. With `build_star_index: false`, `star_index` must already be an index. If
+`build_star_index: true` and `star_index` is empty the index is built under
+`<outputDir>/reference/star_index`. `sjdb_overhang` is the read length minus 1
+and matters only when building.
+
+## A different organism or annotation
+
+Everything genome-specific is in these keys:
+
+```yaml
+genome: 'hg38'                 # label only
+genome_fasta: '/path/to/genome.fa'
+gtf: '/path/to/annotation.gtf'
+star_index: '/path/to/STARindex'
+```
+
+The FASTA and the GTF must come from the same source. `gene_info.py` reads
+`gene_name` and `gene_type` (GENCODE) or `gene_biotype` (Ensembl) from the GTF;
+rRNA % in the QC report needs genes typed `rRNA` or `Mt_rRNA`. TTpipe was set up
+and its defaults chosen for mouse mm10 and GENCODE vM25; other genomes follow the
+same code path but have not been tried.
+
+## Turning optional outputs off
+
+```yaml
+multiqc: false      # skip the MultiQC page
+qc_report: false    # skip the QC table and report
+```
+
+`multiqc_extra` passes extra arguments to MultiQC. The MultiQC page exists only
+on processing runs.
+
+## Changing tool settings
+
+| Key | Passes to | Example |
+|-----|-----------|---------|
+| `star_extra` | STAR alignment (guide: defaults) | `'--outFilterMismatchNmax 6'` |
+| `min_mapq` | `samtools view -q` (guide: 10) | `10` |
+| `remove_duplicates` | Picard `REMOVE_DUPLICATES` (guide: `true`) | `false` to only mark |
+| `picard_extra` | Picard | `'VALIDATION_STRINGENCY=LENIENT'` |
+| `bigwig_bin_size` | `bamCoverage --binSize` | `50` |
+| `bigwig_extra` | `bamCoverage` | `'--extendReads'` |
+| `htseq_nonunique` | `htseq-count --nonunique` | `all` |
+
+The values in the Example column are illustrations of the syntax; the defaults
+are the guide's. A Java heap option for Picard has not been verified to work
+through `picard_extra`; the rule sets no heap, so Picard uses the JVM default.
+
+## Reporting only
+
+To rebuild the QC report from what exists on disk without building anything
+else:
+
+```yaml
+run_processing: false
+run_analysis: false
+qc_report: true
+```
+
+Every metric whose files are missing is left blank and listed under "Skipped".

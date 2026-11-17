@@ -1,0 +1,9 @@
+## Analysis-only dry run: PLACEHOLDER count matrix, no FASTQs / STAR needed.
+samplesheet: 'tests/dryrun/samplesheet.txt'
+outputDir: 'output_ci'
+genome_fasta: 'tests/dryrun/genome.fa'
+gtf: 'tests/dryrun/genes.gtf'
+star_index: 'tests/dryrun/star_index'
+reference_condition: 'DMSO'
+run_processing: false
+analysis_counts: 'tests/dryrun/counts_placeholder.txt'

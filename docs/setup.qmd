@@ -1,0 +1,189 @@
+# Setup
+
+## Prerequisites
+
+- A **Linux** machine or a SLURM cluster. A mouse STAR alignment needs
+  roughly 30 GB of memory (a starting guess in the profiles), and building the
+  index roughly 32 GB or more, so a typical laptop is not enough (see
+  [Cluster reference](cluster.qmd)). macOS arm64 is not supported: STAR
+  2.7.9a, samtools 1.12 and HTSeq 0.13.5, the versions TTpipe pins, have no
+  arm64 builds on bioconda.
+- `python3` >= 3.11 and `conda` >= 24.7.1, loaded by your site's
+  `profiles/<site>/env.sh`. A one-time Miniforge install in
+  `$HOME/miniforge3` works on every cluster; set `TTPIPE_CONDA_ROOT` if it
+  lives elsewhere. See [Cluster Reference](cluster.qmd#conda-version).
+- Paired-end TT-seq FASTQ files (`.fastq.gz`).
+- A genome FASTA and a GTF annotation from the **same source**
+  ([below](#reference)). A STAR index is built once by the pipeline, or you
+  point at an existing one.
+- Optional, for GSEA: `.gmt` gene-set files (gene symbols).
+
+There is no separate setup script: environments are built by Snakemake the
+first time a rule needs them (by default into a `.snakemake/conda` folder
+where you launch). The first run therefore takes longer and the launcher job
+asks for 16 GB.
+
+## 1. Samplesheet
+
+`samplesheet.txt` is tab-separated, one row per **sample** (one pair of FASTQ
+files).
+
+| Column | Contents |
+|--------|----------|
+| `Name` | Unique sample ID. Used in every file name and matched against count-matrix columns |
+| `Condition` | The group the sample belongs to (`DMSO`, `2H`, ...). Replicates share it |
+| `Replicate` | Replicate label inside the condition (`rep1`, `rep2`). Used as a batch term in DESeq2 |
+| `Read1`, `Read2` | FASTQ file names (needed when `run_processing` is true) |
+| `Sequencing_Directory` | Folder that holds both files, joined with the file name (needed when `run_processing` is true) |
+
+```
+Name              Condition  Replicate  Read1                         Read2                         Sequencing_Directory
+ZFP143_DMSO_rep1  DMSO       rep1       ZFP143_DMSO_rep1_R1.fastq.gz  ZFP143_DMSO_rep1_R2.fastq.gz  /path/to/fastq/
+```
+
+TTpipe checks the sheet when it starts and stops with a message if:
+
+- a required column is missing (the header must be tab-separated);
+- two rows have the same `Name`;
+- `Name`, `Condition` or `Replicate` contains anything other than letters,
+  digits, `.`, `_` and `-` (no spaces);
+- `condition_order` in the config does not list exactly the sheet's
+  conditions, `reference_condition` is not one of them, or an entry of
+  `comparisons` names an unknown condition.
+
+::: {.callout-warning}
+Each sample is its own row and its own set of outputs. If you sequenced one
+library on several lanes, concatenate the FASTQ files per mate first
+(`cat lane1_R1.fastq.gz lane2_R1.fastq.gz > sample_R1.fastq.gz`); TTpipe has no
+merge step for lanes.
+:::
+
+Extra columns are ignored. Because the sample table for DESeq2 is made from
+the sheet, `Replicate` is a column DESeq2 sees: give replicates of the same
+condition different labels, and use the same label for the same batch
+across conditions if there is one.
+
+## 2. Reference {#reference}
+
+The defaults are mouse mm10 / GRCm38 and the GENCODE vM25 annotation. You need
+a FASTA (for the STAR index) and the GTF (for the STAR index, HTSeq and the gene
+table), **unzipped**.
+
+### The chromosome-name trap
+
+A FASTA and a GTF from different places usually name the chromosomes
+differently: Ensembl uses `1`, `2`, `X`; GENCODE and UCSC use `chr1`, `chr2`,
+`chrX`. When they do not match, the STAR index cannot use the annotation
+(STAR typically stops while building it; this was not tested here), or, if the
+index was built with one naming and the GTF has the other, HTSeq finds no genes
+and the counts are zero or close to it. The source guide mixes an Ensembl
+FASTA with a GENCODE GTF; TTpipe asks you to use one source and does **not**
+check it.
+
+Matching choices (these URLs were checked to exist):
+
+- GENCODE GRCm38 primary assembly and the vM25 GTF:
+  - <https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/GRCm38.primary_assembly.genome.fa.gz>
+  - <https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/gencode.vM25.annotation.gtf.gz>
+- UCSC mm10 chromosomes, concatenated into one FASTA:
+  <https://hgdownload.soe.ucsc.edu/goldenPath/mm10/chromosomes/>, with the
+  same vM25 GTF (also `chr`-prefixed).
+
+```bash
+gunzip GRCm38.primary_assembly.genome.fa.gz gencode.vM25.annotation.gtf.gz
+grep '>' GRCm38.primary_assembly.genome.fa | head -3   # chr1, chr2, ...
+awk '$3=="gene"' gencode.vM25.annotation.gtf | head -2 # chr1 ...
+```
+
+### The STAR index
+
+Either build it once with TTpipe:
+
+```yaml
+star_index: '/path/to/mm10_STARgenome'
+build_star_index: true
+sjdb_overhang: 100        # read length - 1
+```
+
+or use an index you already have (`build_star_index: false`). If you build
+it, set `build_star_index` back to `false` afterwards. The index must have
+been built with a compatible STAR (TTpipe pins 2.7.9a). If `star_index` is
+empty and `build_star_index` is true, the index goes to
+`<outputDir>/reference/star_index`.
+
+### Gene sets (optional)
+
+GSEA runs only when `gsea_collections` lists `.gmt` files. Download them
+yourself, for example the mouse collections from MSigDB, and make sure they use
+gene **symbols**, because TTpipe ranks genes by the `gene_name` in your GTF.
+Human symbols against a mouse GTF will match few genes.
+
+## 3. Config
+
+Edit `config/TTpipeConfig.yaml`. The shipped file is commented line by line
+and [Configuration](configuration.qmd) lists every key. The lines most runs
+change:
+
+```yaml
+samplesheet: 'samplesheet.txt'
+genome_fasta: '/path/to/GRCm38.primary_assembly.genome.fa'
+gtf: '/path/to/gencode.vM25.annotation.gtf'
+star_index: '/path/to/mm10_STARgenome'
+build_star_index: false
+strandedness: 'dUTP'
+reference_condition: 'DMSO'
+```
+
+`strandedness` must match how your library was made: `dUTP` (read 1
+antisense, read 2 sense; the guide's assumption) or `forward` (read 1 sense).
+If you do not know, run with `dUTP` and look at the QC report's strandedness
+panel ([Recipes](recipes.qmd#strandedness-dutp-or-forward)).
+
+Pass a different config with `--configfile`
+(`sbatch TTpipe.sh --configfile config/mine.yaml`). Make it a **complete copy** of
+the shipped file: the launcher reads `hpcProfile` and `outputDir` from the file
+you pass.
+
+## 4. Compute site
+
+Set once per cluster, in `~/.bashrc` (see [Cluster Reference](cluster.qmd)):
+
+```bash
+export TTPIPE_PROFILE=profiles/biowulf        # your cluster's profile folder
+export TTPIPE_OUTPUT_ROOT=/data/$USER/ttpipe  # where a relative outputDir goes
+export TTPIPE_EMAIL=you@university.edu        # optional notifications
+```
+
+The profile is chosen by `--profile`, then `$TTPIPE_PROFILE`, then
+`hpcProfile` in the config (default `profiles/local`, which runs on the
+current machine with no scheduler).
+
+## 5. Dry run, and the tests
+
+```bash
+bash TTpipe.sh -n
+```
+
+lists every job and runs nothing. Optionally check your Python setup with the
+test suite (needs `pytest`, `pandas`, `numpy`, `plotly`, `pyyaml`, and
+Snakemake and `Rscript` for the parts that use them; parts whose tool is
+missing are skipped):
+
+```bash
+python -m pip install pytest pandas numpy plotly tabulate pyyaml
+pytest -q tests
+```
+
+These tests use synthetic and placeholder files. They check logic and the job
+graph, not that STAR, DESeq2 or any other tool works on real data; see
+[Validation status](validation.qmd).
+
+## 6. Run
+
+```bash
+sbatch TTpipe.sh        # SLURM cluster
+bash TTpipe.sh          # one machine (profiles/local)
+```
+
+[Running](running.qmd) explains what happens, how to monitor a run and how to
+recover from a failure.

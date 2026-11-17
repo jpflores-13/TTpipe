@@ -1,0 +1,260 @@
+## Shared helpers for TTpipe.snakefile and the rule files.
+## Rules carry no cpu/memory/time of their own beyond `threads`; resources live in
+## profiles/<site>/config.yaml (set-threads / set-resources), as in MicroCPipe / dietJuicer.
+##
+## This file is the single source of truth for sample metadata, output paths and targets.
+## Every rule file builds its input/output strings from the templates below.
+
+import os
+import re
+import sys
+import pandas as pd
+
+##### Switches #####
+RUN_PROCESSING = bool(config.get("run_processing", True))
+RUN_ANALYSIS = bool(config.get("run_analysis", True))
+RUN_REPORT = bool(config.get("qc_report", True))
+if not (RUN_PROCESSING or RUN_ANALYSIS or RUN_REPORT):
+    raise ValueError("run_processing, run_analysis and qc_report are all false: nothing to do")
+
+STRANDEDNESS = str(config.get("strandedness", "dUTP"))
+if STRANDEDNESS not in ("dUTP", "forward"):
+    raise ValueError(f"config 'strandedness' must be 'dUTP' or 'forward', got {STRANDEDNESS!r}")
+COUNT_STRAND = str(config.get("count_strand", "sum"))
+if COUNT_STRAND not in ("sum", "sense"):
+    raise ValueError(f"config 'count_strand' must be 'sum' or 'sense', got {COUNT_STRAND!r}")
+
+
+def outdir():
+    """outputDir, with a relative path placed under $TTPIPE_OUTPUT_ROOT when set."""
+    d = os.path.expanduser(str(config.get("outputDir", "output")))
+    if not os.path.isabs(d):
+        d = os.path.join(os.environ.get("TTPIPE_OUTPUT_ROOT", os.getcwd()), d)
+    return d.rstrip("/")
+
+
+OUT = outdir()
+ENVS = os.path.join(workflow.basedir, "..", "envs")
+SCRIPTS = os.path.join(workflow.basedir, "..", "scripts")
+
+##### Samplesheet #####
+samples = pd.read_csv(config["samplesheet"], sep="\t", dtype=str).fillna("")
+_required = {"Name", "Condition", "Replicate"}
+if RUN_PROCESSING:
+    _required |= {"Read1", "Read2", "Sequencing_Directory"}
+_missing = _required - set(samples.columns)
+if _missing:
+    raise ValueError(f"{config['samplesheet']} is missing column(s): {sorted(_missing)}")
+if samples["Name"].duplicated().any():
+    raise ValueError(f"{config['samplesheet']}: duplicate Name(s): "
+                     f"{sorted(samples['Name'][samples['Name'].duplicated()])}")
+for _col in ("Name", "Condition", "Replicate"):
+    _bad = [v for v in samples[_col] if not re.fullmatch(r"[A-Za-z0-9._\-]+", v)]
+    if _bad:
+        raise ValueError(f"{config['samplesheet']}: {_col} values may only contain letters, digits, "
+                         f"'.', '_' and '-' (no spaces); offending: {sorted(set(_bad))}")
+if RUN_PROCESSING:
+    samples["R1"] = [os.path.join(d, f) for d, f in zip(samples["Sequencing_Directory"], samples["Read1"])]
+    samples["R2"] = [os.path.join(d, f) for d, f in zip(samples["Sequencing_Directory"], samples["Read2"])]
+
+SAMPLES = list(samples["Name"])
+SAMPLE_TABLE = samples.set_index("Name")
+CONDITION_OF = SAMPLE_TABLE["Condition"].to_dict()
+
+CONDITIONS = list(dict.fromkeys(samples["Condition"]))
+_order = list(config.get("condition_order", []) or [])
+if _order:
+    if set(_order) != set(CONDITIONS):
+        raise ValueError(f"condition_order {_order} must list exactly the conditions in the samplesheet {CONDITIONS}")
+    CONDITIONS = _order
+SAMPLES_BY_CONDITION = {c: list(samples.loc[samples["Condition"] == c, "Name"]) for c in CONDITIONS}
+
+REFERENCE = str(config.get("reference_condition", CONDITIONS[0]))
+if REFERENCE not in CONDITIONS:
+    raise ValueError(f"reference_condition {REFERENCE!r} is not a Condition in the samplesheet {CONDITIONS}")
+_cmp = config.get("comparisons") or [[c, REFERENCE] for c in CONDITIONS if c != REFERENCE]
+COMPARISONS = []  # list of (treatment, reference)
+for _pair in _cmp:
+    if len(_pair) != 2 or any(p not in CONDITIONS for p in _pair):
+        raise ValueError(f"comparisons entries must be [treatment, reference] using samplesheet Conditions; got {_pair}")
+    COMPARISONS.append((str(_pair[0]), str(_pair[1])))
+COMPARISON_NAMES = [f"{t}_vs_{r}" for t, r in COMPARISONS]
+GSEA_COLLECTIONS = dict(config.get("gsea_collections", {}) or {})
+STRANDS = ["forward", "reverse"]
+
+wildcard_constraints:
+    sample = "|".join(map(re.escape, SAMPLES)),
+    condition = "|".join(map(re.escape, CONDITIONS)),
+    comparison = "|".join(map(re.escape, COMPARISON_NAMES)) or "NONE",
+    collection = "|".join(map(re.escape, GSEA_COLLECTIONS)) or "NONE",
+    strand = "forward|reverse",
+    mate = "1|2",
+
+##### Reference #####
+GTF = config.get("gtf", "")
+GENOME_FASTA = config.get("genome_fasta", "")
+STAR_INDEX = str(config.get("star_index", "")).rstrip("/")
+BUILD_STAR_INDEX = bool(config.get("build_star_index", False))
+if RUN_PROCESSING and BUILD_STAR_INDEX and not STAR_INDEX:
+    STAR_INDEX = OUT + "/reference/star_index"   # nothing configured: build inside the output dir
+
+def _first_seqname(path, fasta=False):
+    """First chromosome name in a FASTA (header) or GTF (first non-comment line); None if unreadable."""
+    import gzip
+    try:
+        op = gzip.open if str(path).endswith(".gz") else open
+        with op(path, "rt") as fh:
+            for line in fh:
+                if fasta and line.startswith(">"):
+                    return line[1:].split()[0]
+                if not fasta and line.strip() and not line.startswith("#"):
+                    return line.split("\t")[0]
+    except OSError:
+        return None
+    return None
+
+
+def check_reference_names():
+    """Fail early when GTF and genome use different chromosome naming styles ('chr1' vs '1'), the trap in the
+    source guide (Ensembl FASTA + GENCODE GTF). Only the naming STYLE of the first sequence is compared, so it
+    is cheap; it cannot catch every mismatch (e.g. different contig sets)."""
+    gtf_name = _first_seqname(GTF) if GTF else None
+    genome_name = None
+    for fname in ("chrName.txt", "chrNameLength.txt"):          # a STAR index has both
+        f = os.path.join(STAR_INDEX, fname) if STAR_INDEX else ""
+        if f and os.path.exists(f):
+            with open(f) as fh:
+                first = fh.readline().split("\t")[0].strip()
+            genome_name = first or None
+            break
+    if genome_name is None and GENOME_FASTA and os.path.exists(GENOME_FASTA):
+        genome_name = _first_seqname(GENOME_FASTA, fasta=True)
+    if gtf_name and genome_name and gtf_name.startswith("chr") != genome_name.startswith("chr"):
+        raise ValueError(f"chromosome names differ between the GTF (first sequence {gtf_name!r}) and the genome "
+                         f"(first sequence {genome_name!r}). Use a FASTA/STAR index and a GTF from the same source "
+                         "(e.g. both GENCODE, or both UCSC-style 'chr' names). See docs: Setup.")
+
+
+if RUN_PROCESSING:
+    check_reference_names()
+
+##### Output path templates (use with expand() or .format()) #####
+## Per sample
+FASTQC_ZIP   = OUT + "/qc/fastqc/{sample}_R{mate}_fastqc.zip"
+TRIM_R       = OUT + "/{sample}/trim/{sample}_R{mate}.fastq.gz"          # temp, only if trim: true
+FASTP_JSON   = OUT + "/{sample}/stats/{sample}_fastp.json"
+STAR_BAM     = OUT + "/{sample}/star/{sample}_Aligned.sortedByCoord.out.bam"   # temp
+STAR_LOG     = OUT + "/{sample}/stats/{sample}_Log.final.out"
+STAR_GENECNT = OUT + "/{sample}/stats/{sample}_ReadsPerGene.out.tab"
+MAPQ_BAM     = OUT + "/{sample}/{sample}_mapq.bam"                        # temp
+MAPQ_STATS   = OUT + "/{sample}/stats/{sample}_mapq.txt"                  # one line: "<sample>\t<read pairs after MAPQ filter>"
+DEDUP_METRICS = OUT + "/{sample}/stats/{sample}_dedupMetrics.txt"
+BAM          = OUT + "/{sample}/{sample}.bam"                             # final: MAPQ-filtered, deduplicated, indexed
+BAI          = BAM + ".bai"
+STRAND_BAM   = OUT + "/{sample}/{sample}_{strand}.bam"                    # forward = RNA transcribed from the + genomic strand, reverse = from the - strand (NOT "sense": a + gene's sense reads are in forward, a - gene's in reverse)
+STRAND_BAI   = STRAND_BAM + ".bai"
+FINAL_STATS  = OUT + "/{sample}/stats/{sample}_final_pairs.txt"           # one line: "<sample>\t<read pairs in final BAM>"
+HTSEQ        = OUT + "/{sample}/counts/{sample}_{strand}.counts.txt"      # htseq-count output, gene_id<TAB>count, with __ summary rows
+## Per condition (replicates merged)
+MERGED_BAM   = OUT + "/merged/{condition}.bam"
+MERGED_STRAND_BAM = OUT + "/merged/{condition}_{strand}.bam"
+SCALE_FACTORS = OUT + "/tracks/scale_factors.tsv"                         # columns: condition, mapped_pairs, scale_factor, source
+BIGWIG       = OUT + "/tracks/{condition}.bw"
+BIGWIG_STRAND = OUT + "/tracks/{condition}_{strand}.bw"
+SAMPLE_BIGWIG = OUT + "/tracks/samples/{sample}.bw"                       # only if sample_tracks: true
+SAMPLE_BIGWIG_STRAND = OUT + "/tracks/samples/{sample}_{strand}.bw"
+## Counts
+GENE_INFO    = OUT + "/counts/gene_info.tsv"          # gene_id, gene_name, gene_type, chr, start, end, strand, length
+COUNTS_FORWARD = OUT + "/counts/counts_forward.txt"   # genes x samples, header = sample Names, first col = gene_id (HTSeq __ rows removed)
+COUNTS_REVERSE = OUT + "/counts/counts_reverse.txt"
+COUNTS_DESEQ2  = OUT + "/counts/counts_deseq2.txt"    # per count_strand: sum (fwd+rev) or sense
+SAMPLES_DESEQ2 = OUT + "/counts/samples_deseq2.txt"   # columns: sample, condition, replicate
+COUNTS_MATRIX  = config.get("analysis_counts") or COUNTS_DESEQ2   # what the analysis reads
+if RUN_ANALYSIS and not RUN_PROCESSING and not config.get("analysis_counts") and not os.path.exists(COUNTS_DESEQ2):
+    raise ValueError("run_processing is false and analysis_counts is empty, and "
+                     f"{COUNTS_DESEQ2} does not exist: set analysis_counts to a count matrix")
+## Analysis
+DEG_DIR      = OUT + "/analysis/deseq2"
+DEGS         = DEG_DIR + "/degs_{comparison}.csv"     # full DESeq2 results table, rows = genes (gene_id), as.data.frame(results)
+DEG_SUMMARY  = DEG_DIR + "/deg_summary.tsv"           # comparison, n_up, n_down, n_tested
+NORM_COUNTS  = DEG_DIR + "/normalized_counts.tsv"
+VST_COUNTS   = DEG_DIR + "/vst.tsv"
+PCA_PDF      = OUT + "/analysis/figures/pca.pdf"
+GSEA_DIR     = OUT + "/analysis/gsea"
+RNK          = GSEA_DIR + "/{comparison}.rnk"         # gene_name <TAB> Wald stat, sorted descending
+GSEA_RESULT  = GSEA_DIR + "/{collection}_{comparison}.tsv"
+SANKEY_PDF   = OUT + "/analysis/figures/sankey.pdf"
+SANKEY_TABLE = OUT + "/analysis/deseq2/sankey_categories.tsv"   # gene_id + Up/Down/n.s. per comparison
+## QC
+SAMPLE_QC    = OUT + "/qc/sample_qc.tsv"              # one row per sample, see scripts/qc_summary.py
+QC_REPORT    = OUT + "/qc/TTpipe_qc_report.html"
+MULTIQC_REPORT = OUT + "/qc/TTpipe_multiqc.html"
+
+
+##### Targets #####
+def processing_targets():
+    t = []
+    t += expand(FASTQC_ZIP, sample=SAMPLES, mate=["1", "2"])
+    t += expand(BAI, sample=SAMPLES)
+    t += expand(STRAND_BAI, sample=SAMPLES, strand=STRANDS)
+    t += expand(BIGWIG, condition=CONDITIONS)
+    t += expand(BIGWIG_STRAND, condition=CONDITIONS, strand=STRANDS)
+    if config.get("sample_tracks", False):
+        t += expand(SAMPLE_BIGWIG, sample=SAMPLES)
+        t += expand(SAMPLE_BIGWIG_STRAND, sample=SAMPLES, strand=STRANDS)
+    t += [COUNTS_FORWARD, COUNTS_REVERSE, COUNTS_DESEQ2, GENE_INFO, SCALE_FACTORS]
+    return t
+
+
+def analysis_targets():
+    t = [SAMPLES_DESEQ2, GENE_INFO, DEG_SUMMARY, NORM_COUNTS, VST_COUNTS, PCA_PDF, SANKEY_PDF, SANKEY_TABLE]
+    t += expand(DEGS, comparison=COMPARISON_NAMES)
+    if GSEA_COLLECTIONS:
+        t += expand(GSEA_RESULT, collection=list(GSEA_COLLECTIONS), comparison=COMPARISON_NAMES)
+    return t
+
+
+def report_targets():
+    return [QC_REPORT]
+
+
+def all_targets():
+    t = []
+    if RUN_PROCESSING:
+        t += processing_targets()
+    if RUN_ANALYSIS:
+        t += analysis_targets()
+    if RUN_REPORT:
+        t += report_targets()
+    if RUN_PROCESSING and config.get("multiqc", False):
+        t.append(MULTIQC_REPORT)
+    return t
+
+
+##### Email notifications (see `notify:` in the config) #####
+NOTIFY = config.get("notify", {}) or {}
+EMAIL = os.environ.get("TTPIPE_EMAIL") or NOTIFY.get("email") or ""
+
+
+def notify(event, body, run_name):
+    """Send one message for a workflow event, if an address and the event are configured."""
+    if not EMAIL or event not in NOTIFY.get("events", ["start", "success", "error"]):
+        return
+    import shlex, socket, subprocess
+    subject = f"{run_name}: {event}"
+    body = (f"Run:     {run_name}\nOutput:  {OUT}\nHost:    {socket.gethostname()}\n\n{body}\n")
+    cmd = NOTIFY.get("command", "mail -s {subject} {email}").format(
+        subject=shlex.quote(subject), email=shlex.quote(EMAIL))
+    try:
+        subprocess.run(cmd, shell=True, input=body, text=True, timeout=60, check=True)
+    except Exception as e:  # a failed email must never fail the workflow
+        print(f"Could not send '{event}' email to {EMAIL}: {e}", file=sys.stderr)
+
+
+def log_tail(path, n=40):
+    """Last n lines of the Snakemake log, for the failure email."""
+    try:
+        with open(path) as fh:
+            return "".join(fh.readlines()[-n:])
+    except (OSError, TypeError):
+        return "(Snakemake log unavailable)"

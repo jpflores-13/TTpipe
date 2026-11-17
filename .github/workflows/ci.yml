@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: config/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r config/requirements.txt
+          python -m pip install pytest pandas numpy plotly tabulate pyyaml
+
+      - name: Check launcher scripts parse
+        run: bash -n TTpipe.sh && bash -n unlock.sh
+
+      - name: Run tests (unit tests, synthetic QC report and Snakemake dry runs)
+        run: pytest -q tests

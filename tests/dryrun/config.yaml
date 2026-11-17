@@ -1,0 +1,7 @@
+## PLACEHOLDER config for CI dry runs (snakemake -n): see tests/dryrun/README.md.
+samplesheet: 'tests/dryrun/samplesheet.txt'
+outputDir: 'output_ci'
+genome_fasta: 'tests/dryrun/genome.fa'
+gtf: 'tests/dryrun/genes.gtf'
+star_index: 'tests/dryrun/star_index'
+reference_condition: 'DMSO'

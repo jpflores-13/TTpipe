@@ -1,0 +1,242 @@
+# Configuration
+
+## How configuration works
+
+TTpipe is driven by two kinds of files, as in dietJuicer:
+
+| File | Purpose |
+|------|---------|
+| `samplesheet.txt` | One row per sample |
+| `config/TTpipeConfig.yaml` | Everything else: reference, switches, processing parameters, DESeq2, GSEA, QC cut-offs |
+
+`--configfile other.yaml` on the launcher replaces it; make that file a complete
+copy, because the launcher reads `hpcProfile` and `outputDir` from it. The shipped
+file is commented line by line; this chapter is the full reference. No path, name
+or parameter is written into the Snakefiles. The defaults reproduce the guide's
+workflow unless a comment in the file says "TTpipe change".
+
+```yaml
+samplesheet: 'samplesheet.txt'
+run_processing: true
+run_analysis: true
+qc_report: true
+multiqc: true
+multiqc_extra: ''
+analysis_counts: ''
+hpcProfile: 'profiles/local'
+outputDir: 'output'
+genome: 'mm10'
+genome_fasta: '/path/to/GRCm38.primary_assembly.genome.fa'
+gtf: '/path/to/gencode.vM25.annotation.gtf'
+star_index: '/path/to/mm10_STARgenome'
+build_star_index: false
+sjdb_overhang: 100
+notify: {email: '', events: ['start', 'success', 'error'], command: 'mail -s {subject} {email}'}
+trim: false
+fastp_extra: ''
+star_extra: ''
+min_mapq: 10
+remove_duplicates: true
+picard_extra: ''
+strandedness: 'dUTP'
+scale_factors: {}
+bigwig_bin_size: 50
+bigwig_extra: ''
+sample_tracks: false
+htseq_feature: 'gene'
+htseq_id_attribute: 'gene_id'
+htseq_nonunique: 'all'
+count_strand: 'sum'
+reference_condition: 'DMSO'
+condition_order: []
+comparisons: []
+design: '~ condition + replicate'
+min_count: 10
+min_samples: 2
+alpha: 0.01
+lfc_threshold: 0
+gsea_collections: {}
+gsea_min_size: 1
+gsea_max_size: 1000000
+gsea_seed: 42
+qc_thresholds: {...}
+```
+
+## Samples
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `samplesheet` | `samplesheet.txt` | Path to the tab-separated sample table ([Setup](setup.qmd#samplesheet)) |
+
+## What to run
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `run_processing` | `true` | FASTQ to BAM, tracks and counts. When false, no FASTQ columns are needed |
+| `run_analysis` | `true` | DESeq2, GSEA, Sankey |
+| `qc_report` | `true` | Per-sample QC table and `TTpipe_qc_report.html` |
+| `multiqc` | `true` | Also `TTpipe_multiqc.html` (FastQC, fastp, STAR, Picard). Only on processing runs |
+| `multiqc_extra` | `''` | Extra arguments passed to `multiqc` |
+| `analysis_counts` | `''` | For `run_processing: false`: path to an existing count matrix (tab-separated, first column `gene_id`, header = sample `Name`s). Empty = use this pipeline's `counts/counts_deseq2.txt` |
+
+If all of `run_processing`, `run_analysis` and `qc_report` are false the workflow
+stops with "nothing to do". With `run_processing: false`, `run_analysis: true` and
+no counts anywhere, it stops with a message asking for `analysis_counts`.
+
+## Compute site and output
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `hpcProfile` | `profiles/local` | Profile folder (with `env.sh` and `config.yaml`). Overridden by `--profile` and `$TTPIPE_PROFILE` |
+| `outputDir` | `output` | Where results go. A relative path is placed under `$TTPIPE_OUTPUT_ROOT` if set, else the folder you launch from. `~` is expanded. An absolute path is used as written |
+
+## Reference
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `genome` | `mm10` | A label only (shown in the QC report header) |
+| `genome_fasta` | placeholder path | Genome FASTA; read only when building the STAR index. **Must match the GTF's chromosome names** |
+| `gtf` | placeholder path | Unzipped GTF: used by the STAR index, HTSeq and the gene table |
+| `star_index` | placeholder path | STAR genome directory. If empty and `build_star_index` is true: `<outputDir>/reference/star_index`. If empty and the index is not being built, the workflow stops |
+| `build_star_index` | `false` | `true`: build the index from `genome_fasta` and `gtf` (once; roughly 32 GB of memory or more, a starting guess) |
+| `sjdb_overhang` | `100` | `STAR --sjdbOverhang` at index build: read length minus 1. Passed explicitly (the guide uses STAR's default, 100) |
+
+## Notifications
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `notify.email` | `''` | Address for start, finish and failure emails. `$TTPIPE_EMAIL` wins if set; with neither, nothing is sent |
+| `notify.events` | `['start', 'success', 'error']` | Which events send a message |
+| `notify.command` | `mail -s {subject} {email}` | Shell command that sends one message; `{subject}` and `{email}` are filled in (shell-quoted) and the body arrives on stdin. Use e.g. `sendmail {email}` and put a `Subject:` line in the body if your cluster has no `mail` |
+
+One email at start, one at the end, one if any job fails (with the last 40 lines
+of the Snakemake log); not one per job; none on dry runs. A failure to send
+only prints a message.
+
+## Processing
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `trim` | `false` | Trim with fastp before STAR. The guide runs FastQC only |
+| `fastp_extra` | `''` | Extra fastp arguments |
+| `star_extra` | `''` | Extra STAR arguments (the guide uses STAR's defaults) |
+| `min_mapq` | `10` | `samtools view -q`. STAR's unique reads have MAPQ 255 |
+| `remove_duplicates` | `true` | Picard `REMOVE_DUPLICATES`; `false` only marks them |
+| `picard_extra` | `''` | Extra Picard arguments, e.g. `VALIDATION_STRINGENCY=LENIENT` |
+| `strandedness` | `dUTP` | `dUTP` (read 1 antisense, read 2 sense) or `forward` (read 1 sense). Any other value stops the workflow |
+
+STAR is always run with `--outSAMtype BAM SortedByCoordinate --readFilesCommand
+zcat --quantMode GeneCounts` and a per-sample `--outTmpDir`; `star_extra` is
+added.
+
+## Tracks (bigWig)
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `scale_factors` | `{}` | Per-condition overrides, e.g. `{DMSO: 1.2757, 2H: 1}`. Listed conditions use your value; the rest are computed as (largest merged-replicate mapped-pair count) / (this condition's). [Recipe](recipes.qmd#pinning-scale-factors) |
+| `bigwig_bin_size` | `50` | `bamCoverage --binSize` (also deepTools' own default) |
+| `bigwig_extra` | `''` | Extra `bamCoverage` arguments |
+| `sample_tracks` | `false` | Also one bigWig set per sample. [Recipe](recipes.qmd#per-sample-tracks) |
+
+Mapped pairs are BAM records divided by two, on the replicate-merged all-reads
+BAMs. `bamCoverage` gets `--scaleFactor` and nothing else for normalisation.
+
+## Gene counts (HTSeq)
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `htseq_feature` | `gene` | `htseq-count --type`. `gene` counts the whole gene body, introns included: the key difference from an RNA-seq count. (The gene table is always built from the GTF's `gene` lines, whatever this is.) |
+| `htseq_id_attribute` | `gene_id` | `--idattr`; also the id attribute `gene_info.py` uses |
+| `htseq_nonunique` | `all` | `--nonunique`. `all` counts a read that overlaps several genes for each of them |
+| `count_strand` | `sum` | `sum`: forward + reverse per gene (the guide's code). `sense`: forward for + genes, reverse for - genes (the guide's text). [Recipe](recipes.qmd#counting-on-the-sense-strand-only) |
+
+HTSeq is run with `-f bam --stranded no --order pos` on each strand BAM; other
+options stay at HTSeq's defaults (for example `--mode union`).
+
+## Differential expression (DESeq2)
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `reference_condition` | `DMSO` (in the shipped file; code default: the first condition) | Control `Condition`; the base level and the default reference |
+| `condition_order` | `[]` | Order of conditions in plots and the Sankey; must list exactly the samplesheet conditions. Empty = order of appearance |
+| `comparisons` | `[]` | `[treatment, reference]` pairs. Empty = every other condition against `reference_condition`. Result names: `<treatment>_vs_<reference>` |
+| `design` | `~ condition + replicate` | DESeq2 design. Only `condition` and `replicate` are available; `condition` is required |
+| `min_count` | `10` | Prefilter: keep genes with at least this many counts... |
+| `min_samples` | `2` | ...in at least this many samples |
+| `alpha` | `0.01` | Adjusted p-value cut-off (results and the Sankey) |
+| `lfc_threshold` | `0` | `lfcThreshold` in `results()`. 0 = none, as in the guide. Above 0, `stat` changes meaning ([Differential expression and GSEA](analysis.qmd#how-to-read-a-results-table)) |
+
+## GSEA
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `gsea_collections` | `{}` | `{Name: '/path/to/sets.gmt'}`. Empty = GSEA is skipped. Names go into file names |
+| `gsea_min_size` | `1` | Smallest gene set kept (guide: 0, no filter) |
+| `gsea_max_size` | `1000000` | Largest gene set kept (guide: no filter) |
+| `gsea_seed` | `42` | Random seed (the guide uses a time stamp) |
+
+## QC thresholds {#qc-thresholds}
+
+`qc_thresholds` maps a metric to `{direction, warn, fail}`. For
+`higher_is_better` a value below `fail` fails and below `warn` warns; for
+`lower_is_better` the reverse. A value exactly on a limit is not penalised.
+
+| Metric | Direction | warn | fail |
+|--------|-----------|------|------|
+| `input_pairs_million` | higher | 20 | 5 |
+| `unique_pct` | higher | 70 | 50 |
+| `multi_pct` | lower | 15 | 30 |
+| `too_short_pct` | lower | 20 | 40 |
+| `duplicate_pct` | lower | 40 | 50 |
+| `sense_pct` | higher | 90 | 75 |
+| `rrna_pct` | lower | 5 | 15 |
+| `replicate_correlation` | higher | 0.95 | 0.85 |
+
+The `warn` values for unique, multi, too-short and duplication follow the guide's
+rules of thumb; **the `fail` values and the others are TTpipe defaults, not
+published standards.** See [Reading the QC report](qc.qmd).
+
+There is also an optional key that is not in the shipped file: `qc_report_banner`
+(text shown in a banner at the top of the report; the tests use it to label
+synthetic data).
+
+## Environment variables
+
+Set in `~/.bashrc`, outside git (details in [Cluster reference](cluster.qmd#environment-variables)):
+`TTPIPE_PROFILE`, `TTPIPE_OUTPUT_ROOT`, `TTPIPE_EMAIL`, `TTPIPE_CONDA_ROOT`.
+
+## Deliberate changes from the source guide {#deliberate-changes-from-the-source-guide}
+
+TTpipe reimplements the TT-seq workflow described in a pipeline guide for
+Magnitov et al. 2024 (*Mol Cell*, doi 10.1016/j.molcel.2024.11.031; GEO GSE260914;
+the authors' code is at <https://github.com/magnitov/zfp143>). It is not the
+authors' code. This table lists what TTpipe does differently on purpose; each row
+was checked against the code.
+
+| # | Topic | Guide | TTpipe |
+|---|-------|-------|--------|
+| 1 | Reference | An Ensembl FASTA (chromosomes `1`, `2`, `X`) paired with a GENCODE GTF (`chr1`...), whose names do not match | FASTA and GTF must come from the same source (default: GENCODE vM25 GTF with a chr-prefixed FASTA). TTpipe does not check this |
+| 2 | Strandedness | dUTP hard-coded | Config key `strandedness` (`dUTP` or `forward`), checked by the QC report's sense % |
+| 3 | Count strand | Text and code disagree | `count_strand`: `sum` (forward + reverse, the guide's code, default) or `sense` (the guide's text) |
+| 4 | Scale factors | Hard-coded | Computed, (max / this) over merged-replicate mapped pairs (records / 2); optional per-condition override |
+| 5 | DESeq2 variable | `time` | Renamed `condition`; `design` validated; count columns matched to samples by name |
+| 6 | VST | `vst()` | Falls back to `varianceStabilizingTransformation()` below 1000 genes |
+| 7 | DEG tables | Space-delimited | CSV with a `gene_id` column |
+| 8 | GSEA | Java GSEA 4.3.2; time-stamp seed; 10000 permutations; ranked by `gene_id` | fgsea; fixed seed; adaptive multilevel p-values; ranked by gene symbol (largest \|stat\| kept for duplicates). Similar in kind, not identical; never compared here |
+| 9 | Sankey | Plotting code not runnable as written | Rewritten to run; a bar chart with one comparison |
+| 10 | BAM merges and counting | An extra sort after each merge; one HTSeq call for all BAMs | Merges skip the redundant sort; a one-sample condition is copied; HTSeq per sample and strand (same counts, parallel) |
+| 11 | Software and optional steps | FastQC only for read QC | One conda environment per rule group; optional fastp (off by default); optional MultiQC |
+| 12 | QC | Not part of the guide | Extra static QC report |
+
+Smaller differences: `--sjdbOverhang`, `--binSize` and HTSeq `--idattr` are
+passed explicitly (at the same values as the defaults); STAR gets a per-sample
+`--outTmpDir`; `min_mapq` and `remove_duplicates` are config keys; per-sample
+tracks, email notifications and the launcher are additions.
+
+**What TTpipe keeps from the guide:** STAR defaults with `--quantMode GeneCounts`;
+MAPQ >= 10; Picard `REMOVE_DUPLICATES=true`; HTSeq `--type gene --nonunique all
+--stranded no --order pos` on strand-split BAMs; `bamCoverage --scaleFactor`;
+DESeq2 with `~ condition + replicate` (the guide's `~ time + replicate`),
+alpha 0.01, no log2 fold-change threshold and a prefilter of at least 10 counts
+in at least 2 samples; ranking by the Wald statistic; the Up / Down / n.s.
+Sankey categories.

@@ -1,0 +1,44 @@
+project:
+  type: book
+  output-dir: _book
+
+book:
+  title: "TTpipe"
+  subtitle: "TT-seq (TTchem-seq) Processing and Analysis Pipeline"
+  author: "JP Flores"
+  date: today
+  repo-url: https://github.com/jpflores-13/TTpipe
+  repo-actions: [edit, issue]
+  site-url: https://jpflores-13.github.io/TTpipe
+
+  chapters:
+    - index.qmd
+    - journey.qmd
+    - vignette.qmd
+    - setup.qmd
+    - running.qmd
+    - qc.qmd
+    - analysis.qmd
+    - recipes.qmd
+    - validation.qmd
+    - part: "Under the Hood"
+      chapters:
+        - configuration.qmd
+        - cluster.qmd
+    - references.qmd
+
+  sidebar:
+    style: docked
+    background: light
+
+format:
+  html:
+    theme:
+      light: [cosmo, custom.scss]
+    code-background: true
+    code-copy: true
+    toc: true
+    toc-depth: 3
+    smooth-scroll: true
+    link-external-icon: true
+    link-external-newwindow: true

@@ -1,0 +1,108 @@
+## UNC Longleaf (SLURM). Select it with `export TTPIPE_PROFILE=profiles/longleaf` in ~/.bashrc.
+executor: slurm
+jobs: 100
+latency-wait: 500
+software-deployment-method: conda
+
+default-resources:
+  slurm_account: rc_dphansti_pi   # <- change to your SLURM account
+  slurm_partition: general
+  runtime: 4320
+  mem_mb: 16000
+  nodes: 1
+## SLURM job logs go to <outputDir>/logs_slurm (--slurm-logdir in TTpipe.sh)
+
+## Per-rule threads / memory / time (rules carry no resources of their own).
+## These are starting values chosen from tool documentation and typical mouse-genome needs,
+## NOT benchmarks of TTpipe: check each job's memory after a first run (seff / sacct) and adjust.
+## STAR needs roughly 30 GB for a mouse genome; `star_index` needs ~32 GB or more.
+set-threads:
+  fastqc: 4
+  fastp: 8
+  star_index: 16
+  star_align: 16
+  mapq_filter: 8
+  mark_duplicates: 2
+  split_strands: 8
+  merge_bams: 8
+  scale_factors: 1
+  bigwig: 8
+  bigwig_sample: 8
+  gene_info: 1
+  htseq_count: 1
+  count_matrix: 1
+  sample_table: 1
+  deseq2: 2
+  rnk: 1
+  fgsea: 2
+  sankey: 1
+  qc_summary: 1
+  qc_report: 2
+  multiqc: 1
+set-resources:
+  fastqc:
+    runtime: 120
+    mem_mb: 4000
+  fastp:
+    runtime: 120
+    mem_mb: 8000
+  star_index:
+    runtime: 240
+    mem_mb: 48000
+  star_align:
+    runtime: 480
+    mem_mb: 40000
+  mapq_filter:
+    runtime: 120
+    mem_mb: 4000
+  mark_duplicates:
+    runtime: 240
+    mem_mb: 16000
+  split_strands:
+    runtime: 240
+    mem_mb: 8000
+  merge_bams:
+    runtime: 240
+    mem_mb: 8000
+  scale_factors:
+    runtime: 15
+    mem_mb: 2000
+  bigwig:
+    runtime: 240
+    mem_mb: 8000
+  bigwig_sample:
+    runtime: 240
+    mem_mb: 8000
+  gene_info:
+    runtime: 15
+    mem_mb: 2000
+  htseq_count:
+    runtime: 480
+    mem_mb: 8000
+  count_matrix:
+    runtime: 30
+    mem_mb: 4000
+  sample_table:
+    runtime: 5
+    mem_mb: 1000
+  deseq2:
+    runtime: 60
+    mem_mb: 8000
+  rnk:
+    runtime: 15
+    mem_mb: 2000
+  fgsea:
+    runtime: 120
+    mem_mb: 8000
+  sankey:
+    runtime: 30
+    mem_mb: 4000
+  qc_summary:
+    runtime: 15
+    mem_mb: 2000
+  qc_report:
+    runtime: 30
+    mem_mb: 8000
+  multiqc:
+    runtime: 30
+    mem_mb: 4000

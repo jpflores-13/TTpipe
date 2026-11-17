@@ -1,0 +1,2 @@
+chrP	placeholder	gene	1	40	.	+	.	gene_id "G1"; gene_name "Gene1"; gene_type "protein_coding";
+chrP	placeholder	gene	41	80	.	-	.	gene_id "G2"; gene_name "Gene2"; gene_type "rRNA";

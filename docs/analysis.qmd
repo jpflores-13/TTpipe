@@ -1,0 +1,190 @@
+# Differential expression and GSEA
+
+This chapter covers the analysis half of TTpipe (`run_analysis: true`): what
+DESeq2, fgsea and the Sankey step do, which files they write, and how to
+read them. The code (`scripts/run_deseq2.R`, `make_rnk.R`, `run_fgsea.R`,
+`make_sankey.R`) was written without being run locally, and only its plain-R
+helper functions are unit-tested, so check the first real results with some
+care ([Validation status](validation.qmd)).
+
+## What goes in
+
+| Input | Source |
+|-------|--------|
+| Count matrix | `counts/counts_deseq2.txt` from the pipeline, or the file named in `analysis_counts` (genes x samples, first column `gene_id`, header = sample `Name`s, integer counts) |
+| Sample table | `counts/samples_deseq2.txt` (`sample`, `condition`, `replicate`), written from the samplesheet |
+| Gene table | `counts/gene_info.tsv`, built from your GTF (needed to turn gene ids into symbols for GSEA) |
+
+DESeq2 matches the matrix columns to the sample table **by name**. If the
+names differ in any way, it stops and lists which names are only in the table
+and which only in the matrix, rather than silently reordering.
+
+## DESeq2
+
+One job (`deseq2`) handles every comparison. In order:
+
+1. **Prefilter.** Keep a gene only if it has at least `min_count` counts (default
+   10) in at least `min_samples` samples (default 2). The log prints how many
+   genes pass. Everything below (normalised counts, VST, results, the Sankey,
+   the ranked lists) contains only these genes.
+2. **VST and PCA.** A variance-stabilising transformation (`blind = FALSE`, so
+   it uses the design) and a PCA of the samples coloured by condition and
+   shaped by replicate (`analysis/figures/pca.pdf`). With fewer than 1000
+   genes passing the prefilter, which only happens with tiny test data,
+   TTpipe uses `varianceStabilizingTransformation()` instead of `vst()`
+   because `vst()` needs at least 1000 genes.
+3. **The DESeq2 model.** Size factors, dispersions and a Wald test, with the
+   `design` from the config (default `~ condition + replicate`). The design may
+   use only the columns `condition` and `replicate`, and must include
+   `condition`; anything else is an error.
+4. **Results per comparison.** For each `[treatment, reference]` pair,
+   `results(contrast = c("condition", treatment, reference), alpha = alpha,
+   lfcThreshold = lfc_threshold)`. The reference level is `reference_condition`;
+   the default comparisons are every other condition against it.
+
+### What `~ condition + replicate` assumes
+
+`replicate` is a batch term: samples with the same replicate label (for
+example every `rep1`) are treated as sharing a batch effect. That is right if
+replicate 1 of each condition was grown and processed together, as in a
+time course done in parallel. If your replicates are independent, with no
+shared batch across conditions, use `design: '~ condition'` instead
+([Recipes](recipes.qmd#custom-comparisons-and-design)). The guide uses
+`~ time + replicate`; TTpipe's `condition` is that same variable under a
+different name.
+
+### Output files
+
+All under `analysis/deseq2/` unless noted.
+
+| File | Contents |
+|------|----------|
+| `degs_<treatment>_vs_<reference>.csv` | The full results table: one row per gene that passed the prefilter. Columns: `gene_id`, `baseMean`, `log2FoldChange`, `lfcSE`, `stat`, `pvalue`, `padj`. Comma-separated |
+| `deg_summary.tsv` | `comparison`, `n_up`, `n_down`, `n_tested` per comparison |
+| `normalized_counts.tsv` | Counts divided by the DESeq2 size factors (genes passing the prefilter; tab-separated, first column `gene_id`) |
+| `vst.tsv` | The VST values (same layout), used for the PCA in the QC report |
+| `sankey_categories.tsv` | Up / Down / n.s. category per gene and comparison |
+| `../figures/pca.pdf` | PCA of the samples |
+
+### How to read a results table
+
+- **`log2FoldChange`**: positive means more new RNA in the *treatment* than in the
+  *reference* (for `6H_vs_DMSO`, higher at 6 h than in DMSO). A value of 1 is a
+  doubling.
+- **`baseMean`**: average normalised count over all samples; a measure of
+  how much signal the gene has.
+- **`lfcSE`**: standard error of the log2 fold change.
+- **`stat`**: the Wald statistic, `log2FoldChange / lfcSE` when
+  `lfc_threshold` is 0. It is what GSEA ranks by.
+- **`pvalue`, `padj`**: the raw and the Benjamini-Hochberg adjusted p-values.
+  Use `padj`. TTpipe's default cut-off is **0.01** with **no fold-change
+  threshold** (the guide's choice for TT-seq).
+- **`NA` in `padj`**: standard DESeq2 behaviour: its automatic independent
+  filtering gives low-count genes an `NA` adjusted p-value, and a gene with an
+  extreme outlier count can get `NA` too. `n_tested` in `deg_summary.tsv` is
+  the number of genes with a non-`NA` `padj`.
+
+`n_up` and `n_down` count genes with `padj < alpha` and a positive or negative
+`log2FoldChange`.
+
+::: {.callout-warning}
+**`lfc_threshold` above 0 changes the meaning of `stat`.** DESeq2 then tests
+whether |log2 fold change| exceeds the threshold, and `stat` is the statistic of
+that test, not `log2FoldChange / lfcSE`. Ranking by it for GSEA is then no
+longer the guide's ranking. The default, 0, matches the guide.
+:::
+
+### No spike-in
+
+DESeq2's normalisation assumes most genes do not change. There is no spike-in
+in this pipeline, so a treatment that changes nascent transcription globally
+cannot be detected from these results, and "down" always means "down relative
+to the bulk of genes". See [From Reads to Results](journey.qmd#what-the-numbers-do-not-tell-you).
+
+## GSEA with fgsea
+
+GSEA (gene-set enrichment analysis) asks whether the genes of a set, such as a
+pathway, cluster toward the top or the bottom of a ranked list of all genes.
+TTpipe runs it with the R package **fgsea**, once for each combination of gene-set
+collection and comparison, and only when `gsea_collections` lists `.gmt`
+files.
+
+1. **Ranked list** (`analysis/gsea/<comparison>.rnk`, rule `rnk`). Genes ranked
+   by the DESeq2 Wald statistic, written as `symbol<TAB>stat`, sorted from
+   highest to lowest. The symbol is the `gene_name` from your GTF. Genes with no
+   statistic or no symbol are dropped, and if two genes share a symbol the one
+   with the larger |stat| is kept. If every gene is dropped, the rule stops with
+   an error: this happens when the count matrix's gene ids do not match the GTF's
+   (for example an analysis-only matrix made with another annotation).
+2. **fgsea** (`analysis/gsea/<collection>_<comparison>.tsv`, rule `fgsea`).
+   Weighted scoring (`gseaParam = 1`, the guide's "weighted"), gene-set size limits
+   `gsea_min_size` / `gsea_max_size` (defaults 1 and 1000000: no filter, as in the
+   guide) and a fixed seed `gsea_seed` (default 42). p-values come from fgsea's
+   adaptive multilevel procedure, not from 10000 permutations.
+
+| Column | Meaning |
+|--------|---------|
+| `pathway` | Gene-set name from the `.gmt` file |
+| `size` | Genes of the set found in the ranked list |
+| `ES` | Enrichment score |
+| `NES` | Normalised enrichment score (comparable across sets) |
+| `pval`, `padj` | p-value and its Benjamini-Hochberg adjustment over the sets tested |
+| `leadingEdge` | The genes driving the enrichment, separated by `;` |
+
+Rows are sorted by `pval`. **Positive `NES`**: the set sits toward the top of the
+list, that is toward genes more transcribed in the treatment than the reference.
+**Negative `NES`**: toward genes less transcribed. Look at `padj` (the run log
+prints how many sets have `padj < 0.05`); a set is more convincing when its
+leading-edge genes are ones you also see in the DEG table.
+
+::: {.callout-note}
+fgsea replaces the Java GSEA 4.3.2 desktop tool the guide uses, and ranks by
+gene symbol where the guide ranks by `gene_id`. The results should be similar
+in kind, not identical. TTpipe's authors have not compared the two.
+:::
+
+**Gene-set symbols must match your GTF's `gene_name`.** MSigDB mouse collections
+use mouse symbols; a human collection against a mouse GTF will find few genes.
+Set sizes in the table show how many genes of each set were found.
+
+## The Sankey diagram
+
+`analysis/figures/sankey.pdf` follows the genes that were tested in **every**
+comparison. For each comparison, each gene is classified:
+
+- **Up**: `padj < alpha` and `log2FoldChange > 0`;
+- **Down**: `padj < alpha` and `log2FoldChange < 0`;
+- **n.s.** (not significant): everything else, including genes whose `padj` is `NA`.
+
+The diagram has one vertical axis per comparison, labelled with the treatment
+condition (`2H`, `6H`, `24H`) when all comparisons share one reference, and with
+the full comparison name otherwise. Bands connect the categories from one axis to
+the next, and the band colour is the gene's category on the **first** axis, so you
+can see where genes that were up at 2 h end up at 6 h and 24 h. Colours are green
+for Down, magenta for Up and grey for n.s. The count of genes in each category is
+printed in the axis.
+
+`analysis/deseq2/sankey_categories.tsv` is the table behind it (`gene_id` and a
+category per comparison), which you can reuse for your own plots.
+
+With only **one comparison** a flow diagram has nothing to flow between, so TTpipe
+draws a bar chart of the Up, Down and n.s. counts instead. If the labelled-axes
+variant of the plot cannot be built with the installed `ggforce`, the script falls
+back to plain grey axes.
+
+## Deliberate changes in the analysis
+
+The differences from the guide that affect this chapter (the full list is in
+[Configuration](configuration.qmd#deliberate-changes-from-the-source-guide)):
+
+- the DESeq2 variable `time` is called `condition`, the `design` is validated, and
+  counts are matched to samples by name;
+- `vst()` falls back to `varianceStabilizingTransformation()` below 1000 genes;
+- DEG tables are CSV files with a `gene_id` column (the guide: space-delimited);
+- GSEA runs in fgsea with a fixed seed, adaptive multilevel p-values and ranking
+  by gene symbol;
+- the Sankey code was rewritten to run, and has a one-comparison fallback.
+
+What stays as in the guide: DESeq2 `alpha` 0.01, no log2 fold-change threshold, the
+prefilter of at least 10 counts in at least 2 samples, and ranking by the Wald
+statistic.

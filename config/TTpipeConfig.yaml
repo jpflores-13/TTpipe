@@ -1,0 +1,140 @@
+## TTpipe configuration: everything a user normally edits is here.
+## Based on the TT-seq (TTchem-seq) workflow of Magnitov et al. 2024 (Mol Cell, GSE260914).
+## Defaults reproduce that workflow unless a comment says "TTpipe change".
+
+## ---- Samples ---------------------------------------------------------------
+## Tab-separated. Columns: Name, Condition, Replicate, Read1, Read2, Sequencing_Directory.
+##   Name       unique sample ID (used in every file name; letters, digits, '.', '_' and '-')
+##   Condition  group the sample belongs to (e.g. DMSO, 2H, 6H, 24H); replicates share it
+##   Replicate  replicate label within the condition (e.g. rep1); used as a batch term in DESeq2
+##   Read1/Read2/Sequencing_Directory: paired-end FASTQs (only needed when run_processing is true)
+samplesheet: 'samplesheet.txt'
+
+## ---- What to run -----------------------------------------------------------
+run_processing: true      # FASTQ -> BAM -> strand BAMs -> bigWigs -> per-gene counts
+run_analysis: true        # counts -> DESeq2 -> GSEA -> Sankey
+qc_report: true           # static HTML report: <outputDir>/qc/TTpipe_qc_report.html
+qc_report_banner: ''      # optional text shown at the top of the report (e.g. 'test run')
+multiqc: true             # also a standard MultiQC page (FastQC, fastp, STAR, Picard): <outputDir>/qc/TTpipe_multiqc.html (processing runs only)
+multiqc_extra: ''         # extra MultiQC arguments
+
+## Analysis-only runs (run_processing: false): path to an existing gene x sample count matrix
+## (tab-separated, header = sample Names, first column = gene_id; same format as
+## <outputDir>/counts/counts_deseq2.txt). Leave empty to use this pipeline's own counts.
+analysis_counts: ''
+
+## ---- Compute site ----------------------------------------------------------
+## Folder in profiles/ with env.sh + config.yaml. Overridden by --profile or
+## $TTPIPE_PROFILE (set that in ~/.bashrc so the repo stays cluster-neutral).
+hpcProfile: 'profiles/local'
+
+## Where results go. A relative path is placed under $TTPIPE_OUTPUT_ROOT if set,
+## otherwise under the directory you launch from.
+outputDir: 'output'
+
+## ---- Reference (mouse mm10 / GRCm38 + GENCODE vM25 by default) -------------
+## TTpipe change: the original guide pairs an Ensembl FASTA (chromosomes "1","2","X")
+## with a GENCODE GTF ("chr1"...), whose names do not match. Use a FASTA and GTF from
+## the SAME source, e.g. GENCODE vM25 primary-assembly genome + vM25 comprehensive GTF.
+genome: 'mm10'                              # label only (reports, track hubs)
+genome_fasta: '/path/to/GRCm38.primary_assembly.genome.fa'    # needed only to build the STAR index
+gtf: '/path/to/gencode.vM25.annotation.gtf'                   # unzipped; used by STAR index, HTSeq, gene table
+star_index: '/path/to/mm10_STARgenome'      # STAR genome directory
+build_star_index: false                     # true: build star_index from genome_fasta + gtf (once; ~32 GB RAM)
+sjdb_overhang: 100                          # STAR --sjdbOverhang at index build: read length - 1
+
+## ---- Email notifications ---------------------------------------------------
+## One email when the workflow starts, one when it finishes, one if any job fails
+## (not one per job). Set `export TTPIPE_EMAIL=you@university.edu` in ~/.bashrc: the address
+## stays out of the repo and wins over `email:` below. With neither set, nothing is sent.
+## A failed email never fails the run.
+notify:
+  email: ''
+  events: ['start', 'success', 'error']
+  ## Shell command that sends one message; {subject} and {email} are filled in and
+  ## the message body arrives on stdin. Most clusters have `mail`; otherwise e.g.
+  ## 'sendmail {email}' (put a Subject: line in the body).
+  command: 'mail -s {subject} {email}'
+
+## ---- Processing ------------------------------------------------------------
+## Adapter/quality trimming with fastp. The guide only runs FastQC (and says to consider
+## trimming if adapter content is above 5%), so this is off by default.
+trim: false
+fastp_extra: ''                       # extra fastp arguments
+
+star_extra: ''                        # extra STAR arguments (guide uses STAR defaults)
+min_mapq: 10                          # samtools view -q (guide: 10; STAR unique reads have MAPQ 255)
+remove_duplicates: true               # Picard MarkDuplicates REMOVE_DUPLICATES (guide: true)
+picard_extra: ''                      # extra Picard arguments, e.g. 'VALIDATION_STRINGENCY=LENIENT'
+
+## Library strandedness. 'dUTP' (TTchem-seq / dUTP second-strand protocols): read 1 is
+## antisense to the transcript, read 2 is sense (the guide's assumption). 'forward': read 1 is
+## sense. TTpipe change: the guide hard-codes dUTP; this key makes it explicit and checkable
+## (the QC report shows the fraction of reads on the annotated gene strand).
+strandedness: 'dUTP'
+
+## ---- Tracks (bigWig) -------------------------------------------------------
+## Tracks are built from replicate-merged BAMs (all, forward, reverse) per condition.
+## Scale factor = (largest condition's mapped read pairs) / (this condition's), as the guide
+## describes. TTpipe change: computed from the data instead of hard-coded. To pin values
+## (e.g. the guide's published ones), list them here: {DMSO: 1.2757, 2H: 1, ...}; a listed
+## condition uses your value, the rest are computed.
+scale_factors: {}
+bigwig_bin_size: 50                   # bamCoverage --binSize (deepTools default)
+bigwig_extra: ''                      # extra bamCoverage arguments
+sample_tracks: false                  # also write one bigWig set per sample (not just per condition)
+
+## ---- Gene counts (HTSeq) ---------------------------------------------------
+## Guide: --type gene (count the whole gene body, introns included: the key difference from
+## RNA-seq), --nonunique all, --stranded no on strand-split BAMs, --order pos.
+htseq_feature: 'gene'
+htseq_id_attribute: 'gene_id'
+htseq_nonunique: 'all'
+## How the strand-split counts become the DESeq2 matrix:
+##   sum    forward + reverse per gene (what the guide's code does; counts reads on either strand)
+##   sense  only the strand matching the gene's annotation (what the guide's text describes;
+##          drops antisense reads)
+## The guide's text and code disagree; 'sum' keeps its code (and published numbers).
+count_strand: 'sum'
+
+## ---- Differential expression (DESeq2) --------------------------------------
+reference_condition: 'DMSO'           # control Condition (guide: DMSO = 0 h)
+condition_order: []                   # plot / Sankey order, e.g. ['DMSO','2H','6H','24H']; empty = order of appearance
+## Contrasts as [treatment, reference] pairs. Empty = every other condition vs reference_condition.
+## Result names are '<treatment>_vs_<reference>'.
+comparisons: []
+design: '~ condition + replicate'     # DESeq2 design; columns available: condition, replicate
+                                      # (guide: ~ time + replicate; same model, 'time' is called 'condition' here)
+min_count: 10                         # prefilter: keep genes with >= min_count in >= min_samples samples
+min_samples: 2
+alpha: 0.01                           # adjusted p-value cut-off (guide: 0.01)
+lfc_threshold: 0                      # guide: none for TT-seq (log2 fold change threshold in results())
+
+## ---- GSEA (preranked) ------------------------------------------------------
+## Ranked by the DESeq2 Wald statistic (as the guide). TTpipe change: runs fgsea in R, not the
+## Java GSEA 4.3.2 desktop tool, and the seed is fixed (the guide uses a time stamp). Genes are
+## ranked by symbol (gene_name); duplicate symbols keep the one with the largest |stat|.
+## Gene sets are .gmt files you download yourself (e.g. MSigDB mouse Hallmark / GO:BP / Reactome).
+## Empty = GSEA is skipped.
+gsea_collections: {}
+#  Hallmarks: '/path/to/mh.all.v2023.2.Mm.symbols.gmt'
+#  GO_BP: '/path/to/m5.go.bp.v2023.2.Mm.symbols.gmt'
+#  Reactome: '/path/to/m2.cp.reactome.v2023.2.Mm.symbols.gmt'
+gsea_min_size: 1                      # guide: -set_min 0 (no lower filter)
+gsea_max_size: 1000000                # guide: -set_max 1000000 (no upper filter)
+gsea_seed: 42
+
+## ---- QC report thresholds --------------------------------------------------
+## Traffic lights in the HTML report. For higher_is_better a value below `fail` fails and
+## below `warn` warns; the reverse for lower_is_better. `warn` values come from the guide's
+## rules of thumb (unique >70%, multi <15%, too-short <20%, duplication 20-40% typical and
+## >50% suspect). `fail` values are TTpipe defaults, not literature: adjust to your lab.
+qc_thresholds:
+  input_pairs_million:    {direction: higher_is_better, warn: 20,  fail: 5}
+  unique_pct:             {direction: higher_is_better, warn: 70,  fail: 50}
+  multi_pct:              {direction: lower_is_better,  warn: 15,  fail: 30}
+  too_short_pct:          {direction: lower_is_better,  warn: 20,  fail: 40}
+  duplicate_pct:          {direction: lower_is_better,  warn: 40,  fail: 50}
+  sense_pct:              {direction: higher_is_better, warn: 90,  fail: 75}   # reads on the gene strand
+  rrna_pct:               {direction: lower_is_better,  warn: 5,   fail: 15}   # of counted reads
+  replicate_correlation:  {direction: higher_is_better, warn: 0.95, fail: 0.85}  # Pearson r of log counts between replicates
