@@ -15,7 +15,7 @@ default-resources:
 ## Per-rule threads / memory / time (rules carry no resources of their own).
 ## These are starting values chosen from tool documentation and typical mouse-genome needs,
 ## NOT benchmarks of TTpipe: check each job's memory after a first run (seff / sacct) and adjust.
-## STAR needs roughly 30 GB for a mouse genome; `star_index` needs ~32 GB or more.
+## STAR alignment used about 26 GB for the mouse genome in a test run; `star_index` needed about 29 GB in the mouse test run.
 set-threads:
   fastqc: 4
   fastp: 8

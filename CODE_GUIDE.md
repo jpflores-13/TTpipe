@@ -634,7 +634,15 @@ Snakemake profile). The SLURM profiles set `executor: slurm`, `jobs: 100`,
 per-rule `set-threads` / `set-resources` block. `profiles/local` has no
 scheduler: `cores: all`, `latency-wait: 60`, and a global `mem_mb=64000`
 limit that makes Snakemake run only as many jobs as fit in that memory.
-See [`docs/cluster.qmd`](docs/cluster.qmd).
+
+`profiles/slurm-template` is the starting point for any SLURM cluster
+(copy it and fill in partition and account). `local` is for one machine.
+`biowulf`, `longleaf` and `pioneer` are examples of the template filled in
+for three real sites; `longleaf` and `pioneer` carry a required
+`<your-slurm-account>` placeholder that must be replaced. See
+[`docs/cluster.qmd`](docs/cluster.qmd) and, for symptom-cause-fix entries on
+disk quotas, memory kills and first-run internet access,
+[`docs/troubleshooting.qmd`](docs/troubleshooting.qmd).
 
 ---
 
@@ -672,7 +680,7 @@ text and code as TTpipe's authors read them.
 
 | # | Topic | Guide | TTpipe | Where |
 |---|-------|-------|--------|-------|
-| 1 | Reference | Pairs an Ensembl FASTA (chromosomes `1`, `2`, `X`) with a GENCODE GTF (`chr1`...), whose names do not match | FASTA and GTF must come from the same source (default: GENCODE vM25 GTF with a chr-prefixed FASTA). TTpipe documents this but does not check it | `genome_fasta`, `gtf`; README |
+| 1 | Reference | Pairs an Ensembl FASTA (chromosomes `1`, `2`, `X`) with a GENCODE GTF (`chr1`...), whose names do not match | FASTA and GTF must come from the same source (default: GENCODE vM25 GTF with a chr-prefixed FASTA). TTpipe documents this and, for the `chr` prefix only, checks the first sequence (`check_reference_names` in `common.smk`) | `genome_fasta`, `gtf`; README |
 | 2 | Strandedness | dUTP is hard-coded | Explicit key `strandedness`: `dUTP` (default) or `forward`; the QC report shows the fraction of reads on the gene strand | `STRAND_FLAGS` in `processing.smk`; `qc_summary.py` |
 | 3 | Count strand | Text and code disagree: the text describes counting the sense strand, the code adds forward and reverse | Key `count_strand`: `sum` = forward + reverse (the guide's code, the default); `sense` = forward for + genes, reverse for - genes (the guide's text) | `make_count_matrix.py` |
 | 4 | Scale factors | Hard-coded values | Computed: (largest condition's mapped pairs) / (this condition's), on the replicate-merged BAMs, pairs = records / 2; optional per-condition override in `scale_factors` | `scale_factors` rule, `scale_factors.py` |
@@ -755,7 +763,11 @@ TTpipe/
 ## Common pitfalls
 
 - **FASTA and GTF from different sources.** Chromosome names differ and
-  genes are not found.
+  genes are not found. Only a `chr`-prefix difference in the first sequence
+  is caught at startup (`check_reference_names`).
+- **Other organisms.** No code is mouse-specific; see
+  [`docs/setup.qmd`](docs/setup.qmd) (Other genomes). Only mouse has been run
+  on real data.
 - **Wrong `strandedness`.** The QC report's strandedness panel will show
   most reads on the opposite strand. Changing the key reruns the
   strand split and everything after it.

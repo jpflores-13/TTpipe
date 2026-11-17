@@ -379,6 +379,10 @@ def rrna_pct_from_matrix(counts: pd.DataFrame, info: pd.DataFrame) -> Dict[str, 
     if ann["gene_type"].isna().all():
         return {}
     is_r = ann["gene_type"].isin(RRNA_TYPES).to_numpy()
+    if not is_r.any():
+        # No gene is typed rRNA / Mt_rRNA: either this annotation holds no rRNA genes or it uses other type names.
+        # Reporting 0 % would look like a clean library, so leave the metric blank instead.
+        return {}
     tot = counts.sum(axis=0)
     r = counts[is_r].sum(axis=0)
     return {s: 100.0 * r[s] / tot[s] for s in counts.columns if tot[s] > 0}

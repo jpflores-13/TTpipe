@@ -14,60 +14,93 @@ plotly and pytest (no conda, no STAR). It covers:
 - Snakemake **dry runs** against tiny placeholder inputs (full, processing-only,
   analysis-only, trimming, per-sample tracks, GSEA branch, bad configs rejected,
   the FASTA/GTF chromosome-name check);
+- a regression test that really runs the sample-table rule and checks that editing
+  the samplesheet regenerates it (see the bug found below);
 - the Python scripts (gene table, count matrix, scale factors, QC summary, QC
-  report) on **synthetic** inputs;
+  report, results explorer) on **synthetic** inputs, and the results explorer's
+  controls driven in headless Chrome on synthetic data;
 - the pure-logic parts of the R scripts (ranking, classification, design checks);
 - that the rule-graph diagrams in the docs are current.
 
-At the last run, 80 tests passed. These tests show the workflow parses and that
-the scripts behave on made-up inputs. They do **not** show that STAR, DESeq2 or any
-other tool gives good results.
+At the last full run, 105 tests passed with R available, and 92 passed with 13
+skipped (the R-script tests) on Python 3.11 without R, which is how the GitHub CI
+runner behaves. These tests show the workflow parses and that the scripts behave on
+made-up inputs. They do **not** show that STAR, DESeq2 or any other tool gives good
+results.
 
-## Real-data test (one round, one cluster)
+## Real-data test (two rounds, one cluster)
 
-**What was run.** Four TT-seq samples from the public GEO series GSE260914
-(mouse ESC, ZFP143 dTAG degron): DMSO and 2 h, two replicates each. Only the
-**first 3 million read pairs** of each run were used (44 nt reads), so these are the
-first reads in each file, not a random sample. The reference was the mm10 genome
-with GENCODE vM25 annotation. The workflow ran on a SLURM cluster (Case Western's Pioneer, `pioneer` profile) with per-rule conda
-environments on linux-64.
+**What was run.** Public TT-seq data from GEO series GSE260914 (mouse ESC, ZFP143
+dTAG degron). Only the **first 3 million read pairs** of each run were used (44 nt
+reads), so these are the first reads in each file, not a random sample. Round 1 used
+DMSO and 2 h (two replicates each); round 2 added 6 h and 24 h, giving 8 samples and
+three contrasts against DMSO. The reference was mm10 with GENCODE vM25. Gene sets
+for GSEA were the MSigDB mouse Hallmark, GO:BP and Reactome collections (release
+2023.2). The workflow ran on a SLURM cluster (Case Western's Pioneer, `pioneer`
+profile) with per-rule conda environments on linux-64.
 
-**What happened.**
+**What was found and fixed along the way.**
 
-- All 59 jobs completed, after one failure that was fixed: MultiQC 1.14 failed at
-  import (`No module named 'pkg_resources'`) because the newest setuptools no longer
-  provides it; `envs/ttpipe_multiqc.yml` now pins `setuptools<70`, and only that job
-  was re-run.
-- A first environment build also failed once because conda's package cache filled the
-  user's home-directory quota. This is a site issue, not a pipeline one; set
-  `CONDA_PKGS_DIRS` to a roomy location (see [Cluster](cluster.qmd)).
-- All six conda environments solved on linux-64, including STAR 2.7.9a with
-  samtools 1.12 and Picard 2.25.6 in one environment.
-- The QC report's parsers read the real STAR `Log.final.out`, the Picard
-  MarkDuplicates metrics, STAR `ReadsPerGene`, and the HTSeq counts without errors.
-  The MultiQC page found the FastQC, STAR and Picard reports for all four samples.
+- MultiQC 1.14 failed at import (`No module named 'pkg_resources'`) because the
+  newest setuptools no longer provides it; `envs/ttpipe_multiqc.yml` now pins
+  `setuptools<70`.
+- Environment builds failed twice with `Disk quota exceeded` because conda's package
+  cache and Snakemake's cache live under the user's home directory. This is a site
+  issue, not a pipeline one; see [Troubleshooting](troubleshooting.qmd) and
+  [Cluster](cluster.qmd).
+- **A real bug in TTpipe**: after adding samples to an existing output folder, DESeq2
+  failed with "sample names differ between the count matrix and the sample table".
+  The sample-table rule did not list the samplesheet as an input, so Snakemake kept
+  a stale table. The samplesheet is now an input of `sample_table`, `qc_summary` and
+  `qc_report`, and a regression test fails on the old rule and passes on the fix.
+  Starting from an empty output folder would never have shown it.
+- Once fixed, only the 18 jobs that had not finished were run; the finished
+  alignments were not repeated.
+
+**What worked on real data.** All 117 planned jobs of the 8-sample workflow
+completed (across three submissions, because of the two failures above). All six
+conda environments solved on linux-64, including STAR 2.7.9a with samtools 1.12 and
+Picard 2.25.6 in one environment. The QC report's parsers read the real STAR
+`Log.final.out`, Picard metrics, STAR `ReadsPerGene` and HTSeq counts without errors.
+MultiQC found the FastQC, STAR and Picard reports. DESeq2 ran for three contrasts,
+fgsea for three collections x three contrasts (nine result tables), the Sankey drew a
+three-axis parallel set (2 h, 6 h, 24 h) and the PCA was produced.
 
 **Observed values on this subset** (illustrative of the report, not a quality
 statement about the data):
 
-| Quantity | Observed range over 4 samples |
+| Quantity | Observed range over 8 samples |
 |---|---|
-| Uniquely mapped (STAR) | 62.3 to 66.2 % |
-| Multi-mapped | 7.7 to 8.4 % |
-| Unmapped, too short | 24.2 to 29.2 % |
-| Duplication (Picard) | 22.5 to 32.1 % |
-| Reads on the gene strand (HTSeq, `sum` counting) | 86.7 to 88.4 % |
-| rRNA genes, % of counted reads | 8.5 to 12.9 % |
-| Replicate correlation (Pearson, log2 CPM) | 0.943 (DMSO), 0.956 (2 h) |
+| Uniquely mapped (STAR) | 62.3 to 68.9 % |
+| Multi-mapped | 7.2 to 8.7 % |
+| Unmapped, too short | 22.8 to 29.2 % |
+| Duplication (Picard) | 17.7 to 32.1 % |
+| Reads on the gene strand (HTSeq, `sum` counting) | 86.7 to 88.9 % |
+| rRNA genes, % of counted reads | 7.2 to 12.9 % |
+| Replicate correlation (Pearson, log2 CPM), per condition | 0.943 to 0.960 |
+| Computed bigWig scale factors (DMSO, 2 h, 6 h, 24 h) | 1.216, 1.083, 1.043, 1 |
 
-Against the default thresholds in the config, the strand, rRNA and DMSO replicate
-correlation values fall in the **warn** range. The thresholds' `fail` values are
+Against the default thresholds in the config, the strand and rRNA values and some
+replicate correlations fall in the **warn** range. The thresholds' `fail` values are
 TTpipe defaults, not literature values.
 
-DESeq2 (2 h vs DMSO, alpha 0.01) tested 11,209 genes and called 1 up and 17 down.
-With two replicates and a 3-million-pair subset this says nothing about the biology.
+DESeq2 (each contrast vs DMSO, alpha 0.01) called, with the number of genes with a
+non-missing adjusted p-value in brackets: 2 h, 6 up and 43 down (11,337); 6 h, 17 up
+and 58 down (11,337); 24 h, 25 up and 114 down (12,638). With two replicates and a
+3-million-pair subset this says nothing about the biology. fgsea (adjusted p < 0.05)
+reported, for 2 h, 6 h and 24 h respectively: Hallmark 15, 9 and 11 of 50 sets; GO:BP
+216, 309 and 296 of 7,726; Reactome 52, 24 and 21 of 1,250. These are counts of sets
+that passed a threshold, not an interpretation, and fgsea was never compared with the
+Java GSEA tool.
 
-**Measured resource use** (from Snakemake benchmark files in this run):
+**Results explorer.** The explorer was built from the real tables (13,419 genes, three
+contrasts, GSEA and normalized counts; 11.4 MB) and its 24 scripted interaction
+checks passed in headless Chrome. Its up/down counts for the 2 h contrast (6 up,
+43 down) match the pipeline's own `deg_summary.tsv`. The page was produced by running
+`scripts/results_explorer.py` directly on tables copied from the cluster, **not** by
+the `results_explorer` rule under conda on the cluster, which has not yet been run.
+
+**Measured resource use** (from Snakemake benchmark files in the first round):
 STAR alignment used about 25.7 GB of memory (depends on the genome, not the number
 of reads) and the STAR index build about 28.9 GB and 36 minutes. Every other rule
 used roughly 1.2 GB or less. Run times are for 3-million-pair inputs only and do not
@@ -77,15 +110,16 @@ starting values.
 ## What has not been run
 
 - **Full-depth data.** The real samples have roughly 30 to 48 million pairs; none were run.
-- **Time points 6 h and 24 h**, so the **multi-comparison Sankey** (this subset has one
-  contrast, which uses the one-comparison bar chart) and multi-contrast DESeq2 are untested on real data.
-- **fgsea / GSEA.** No gene-set files were configured, so the `rnk` and `fgsea` rules did not run.
-  The Java GSEA tool was never compared with fgsea.
+- **The `results_explorer` rule on a cluster** (see above), and the explorer in browsers other than Chrome,
+  with real mouse hover or an actual CSV download.
 - **Optional switches** on real data: `trim: true` (fastp), `strandedness: forward`,
   `count_strand: sense`, `sample_tracks: true`, `analysis_counts`.
+- **Other organisms.** Only mouse (mm10, GENCODE vM25) was run; human is expected to
+  work (see [Setup](setup.qmd)) but is untested.
 - **Other clusters and platforms.** Only one cluster was used. STAR 2.7.9a, samtools
   1.12 and HTSeq 0.13.5 have no osx-arm64 builds, so a laptop run on Apple silicon was not attempted.
-- **Spike-in, labeled-vs-total and rate analyses** do not exist in this version.
+- **Spike-in, labeled-vs-total, lncRNA/eRNA discovery, tracks panel and rate analyses**
+  do not exist in this version.
 
 ## Repeating the real-data test
 

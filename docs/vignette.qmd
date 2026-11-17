@@ -39,6 +39,15 @@ this page comes from a real run, and the paths and run accessions are
 placeholders.** Read [Validation status](validation.qmd) for what has
 actually been run.
 
+::: {.callout-note}
+**Your organism is not mouse?** The walkthrough uses the public mouse example
+because that is what the pipeline has been run on. Every step is the same
+for other organisms: only the reference files, `sjdb_overhang` and the gene
+sets change. See [Setup: Other genomes](setup.qmd#other-genomes). If your
+cluster or workstation differs from the one assumed below, see the
+[Cluster reference](cluster.qmd).
+:::
+
 ## The example
 
 The public dataset **GSE260914** (Magnitov et al. 2024) contains, among
@@ -97,14 +106,14 @@ awk '$3=="gene"' gencode.vM25.annotation.gtf | head -2   # first column: chr1
 **The chromosome-name trap.** An Ensembl FASTA names chromosomes `1`, `2`,
 `X`; a GENCODE GTF names them `chr1`, `chr2`, `chrX`. The source guide pairs
 the two, and a pipeline that does so finds no genes (or fails when building
-the STAR index). TTpipe does not check for this: you must. If you prefer UCSC
+the STAR index). TTpipe stops at startup only when one file has `chr` prefixes and the other does not (first sequence only); other mismatches you must catch yourself. If you prefer UCSC
 mm10, its per-chromosome files are at
 <https://hgdownload.soe.ucsc.edu/goldenPath/mm10/chromosomes/>; concatenate
 the ones you want into one FASTA and use it with the same GENCODE GTF.
 :::
 
-The STAR index is built once by TTpipe itself (next sections). It needs
-roughly 32 GB of memory or more.
+The STAR index is built once by TTpipe itself (next sections). On a mouse
+genome the build measured about 29 GB of memory.
 
 ## The data
 
@@ -138,6 +147,11 @@ grep TTseq /path/to/ena_runs.tsv | while IFS=$'\t' read -r run title layout ftp;
 done
 ls                                                     # eight pairs, e.g. ZFP143_2H_rep1_R1.fastq.gz
 ```
+
+To keep a first run small, you can keep only the first N read pairs of each
+file (a FASTQ record is 4 lines, so 4 x N lines), as described in the
+[README](https://github.com/jpflores-13/TTpipe#trying-it-on-a-small-example);
+a subsample is for checking that the pipeline runs, not for results.
 
 If your site blocks FTP, download the same files over HTTPS or with
 `fasterq-dump` from the SRA Toolkit using the run accessions in the first
@@ -207,15 +221,19 @@ default; [Configuration](configuration.qmd) explains all of them.
 Put these in `~/.bashrc` once (see [Cluster reference](cluster.qmd)):
 
 ```bash
-export TTPIPE_PROFILE=profiles/<your-site>          # e.g. profiles/biowulf
+export TTPIPE_PROFILE=profiles/<your-site>          # e.g. profiles/mycluster
 export TTPIPE_OUTPUT_ROOT=/path/to/scratch/ttpipe   # where `output/` goes
 export TTPIPE_EMAIL=you@university.edu              # optional: start / finish / failure emails
 source ~/.bashrc
 ```
 
-If your cluster is not one of the shipped profiles, copy
-`profiles/slurm-template` and fill in your account and partition. On one
-machine with no scheduler the default `profiles/local` is used. The
+The shipped site profiles (`biowulf`, `longleaf`, `pioneer`) are examples;
+for your own cluster copy `profiles/slurm-template` and fill in your account
+and partition ([Set up your own cluster](cluster.qmd#own-cluster)). On one
+machine with no scheduler the default `profiles/local` is used. A worked
+example for one site is in the [Cluster reference](cluster.qmd#own-cluster)
+(the box "Example: running on Case Western's Pioneer cluster"), including the
+`Disk quota exceeded` workaround that site needed. The
 per-rule memory and time in the profiles are starting guesses; expect to
 adjust them after a first look at what the jobs used.
 
@@ -237,6 +255,10 @@ config key, fix that first; the messages name the problem.
 sbatch TTpipe.sh            # on a SLURM cluster
 # bash TTpipe.sh            # on one machine (profiles/local)
 ```
+
+If your cluster gives internet access only on some nodes, build the
+conda environments first with `bash TTpipe.sh --conda-create-envs-only` on
+a node that has it ([Troubleshooting](troubleshooting.qmd#the-clusters-compute-nodes-have-no-internet-access)).
 
 The launcher job is small; it submits each rule as its own job. The first run
 also builds the conda environments, which takes a while and needs memory, so

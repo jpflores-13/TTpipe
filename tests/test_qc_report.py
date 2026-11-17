@@ -311,3 +311,13 @@ def test_sample_names_are_escaped(tmp_path):
             "--sample-qc", tsv, "--out", str(out)])
     doc = out.read_text()
     assert "a&lt;b&gt;&amp;c" in doc and "<b>&c" not in doc
+
+
+def test_rrna_blank_when_no_gene_is_typed_rrna():
+    """If the annotation has gene types but none is rRNA/Mt_rRNA (no rRNA genes, or other type names), the metric
+    must be blank, not a misleading 0 % that looks like a clean library."""
+    info = pd.DataFrame({"gene_type": ["protein_coding", "lncRNA"], "strand": ["+", "-"]}, index=["g1", "g2"])
+    counts = pd.DataFrame({"s1": [10, 20]}, index=["g1", "g2"])
+    assert qs.rrna_pct_from_matrix(counts, info) == {}
+    info.loc["g2", "gene_type"] = "rRNA"
+    assert qs.rrna_pct_from_matrix(counts, info)["s1"] == pytest.approx(100 * 20 / 30)

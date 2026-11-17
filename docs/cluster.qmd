@@ -6,13 +6,20 @@ per cluster, outside git.
 
 ## Profiles
 
-| Folder | For | Scheduler |
-|--------|-----|-----------|
-| `profiles/biowulf/` | NIH Biowulf | SLURM (partition `norm`, no account line) |
-| `profiles/longleaf/` | UNC Longleaf | SLURM (partition `general`; names an account that is **not yours**: edit it) |
-| `profiles/pioneer/` | Case Western Pioneer | SLURM (partition `batch`; names an account that is **not yours**: edit it) |
-| `profiles/slurm-template/` | Any other SLURM cluster | SLURM; fill in the `<...>` values |
-| `profiles/local/` | One machine, no scheduler | none |
+A **profile** is a folder under `profiles/` that tells TTpipe how to run jobs
+at one compute site. Pick the row that fits you:
+
+| Folder | Use it when | Scheduler |
+|--------|-------------|-----------|
+| `profiles/slurm-template/` | You have a SLURM cluster of your own. **Start here:** copy it and fill in the `<...>` values ([Set up your own cluster](#own-cluster)) | SLURM |
+| `profiles/local/` | You run on one machine, no scheduler ([Single workstation](#workstation)) | none |
+| `profiles/biowulf/`, `profiles/longleaf/`, `profiles/pioneer/` | **Examples only.** The template filled in for three real sites (NIH Biowulf, UNC Longleaf, Case Western Pioneer) with the partition names used there (`norm`, `general`, `batch`). Read one as a model; at any other site, make your own profile | SLURM |
+
+The `longleaf` and `pioneer` profiles contain a **required** placeholder,
+`slurm_account: <your-slurm-account>`. SLURM rejects submissions until you
+replace it with your own account (find it with `sacctmgr show assoc
+user=$USER`) or delete the line if your cluster has no accounts. The
+`biowulf` profile has no account line.
 
 Each folder has two files:
 
@@ -37,7 +44,7 @@ leave the config alone.
 
 | Variable | Used for | Example |
 |----------|----------|---------|
-| `TTPIPE_PROFILE` | Which profile folder to use | `profiles/biowulf` |
+| `TTPIPE_PROFILE` | Which profile folder to use | `profiles/mycluster` |
 | `TTPIPE_OUTPUT_ROOT` | Folder a relative `outputDir` goes under (unset: the folder you launch from) | `/data/$USER/ttpipe` |
 | `TTPIPE_EMAIL` | Notification address (wins over `notify: email:`) | `you@university.edu` |
 | `TTPIPE_CONDA_ROOT` | Where your Miniforge lives, if not `$HOME/miniforge3` | `/data/$USER/miniforge3` |
@@ -64,26 +71,139 @@ bash Miniforge3-Linux-x86_64.sh -b -p $HOME/miniforge3
 export TTPIPE_CONDA_ROOT=$HOME/miniforge3      # only if it is not $HOME/miniforge3
 ```
 
-`profiles/biowulf/env.sh` uses `TTPIPE_CONDA_ROOT` if it exists and otherwise `module
+`profiles/biowulf/env.sh` (an example profile) uses `TTPIPE_CONDA_ROOT` if it exists and otherwise `module
 load conda`; the others source Miniforge from `TTPIPE_CONDA_ROOT` (default
 `$HOME/miniforge3`). Software versions are in `envs/`: Snakemake builds one conda
 environment per group of rules on first use (by default into `.snakemake/conda`
 where you launch). The environments were solved on one Linux cluster, **not** on
 macOS arm64.
 
-## Adding a site
+## Set up your own cluster {#own-cluster}
+
+For any SLURM cluster, one-time, about ten minutes. SLURM is the job scheduler
+many clusters use; commands such as `sinfo` and `sacctmgr` belong to it.
+
+1. **Copy the template** and name it after your cluster:
+
+    ```bash
+    cp -r profiles/slurm-template profiles/mycluster
+    ```
+
+2. **Find your partition.** A partition is a queue of nodes. List them with
+   `sinfo -s` and pick one for ordinary CPU jobs with enough memory per node
+   (STAR needs about 26 to 30 GB on a mouse genome, see below). Your cluster's
+   documentation names the right one.
+3. **Find your account**, if your cluster uses accounts for billing or
+   limits: `sacctmgr show assoc user=$USER format=account%30`. If it prints
+   nothing useful, ask your administrators.
+4. **Edit `profiles/mycluster/config.yaml`**: set `slurm_partition` and
+   `slurm_account` under `default-resources`; delete the `slurm_account` line
+   if you have no account. The per-rule numbers below it are starting values.
+5. **Set the conda location** in `profiles/mycluster/env.sh`. The template
+   uses your own Miniforge at `$HOME/miniforge3` (or `$TTPIPE_CONDA_ROOT`). If
+   your site provides conda as a module, `module load ...` here works too, as
+   long as conda is 24.7.1 or newer. If your home directory has a small
+   quota, see the `Disk quota exceeded` entry in
+   [Troubleshooting](troubleshooting.qmd#disk-quota-exceeded-while-building-environments-or-starting-snakemake).
+6. **Select the profile** once, in `~/.bashrc`:
+
+    ```bash
+    echo 'export TTPIPE_PROFILE=profiles/mycluster' >> ~/.bashrc
+    echo 'export TTPIPE_OUTPUT_ROOT=/path/with/space/ttpipe' >> ~/.bashrc
+    source ~/.bashrc
+    ```
+
+7. **Test with a dry run**, which lists every job and runs nothing, and
+   catches most path and config mistakes:
+
+    ```bash
+    bash TTpipe.sh -n
+    ```
+
+8. **Build the environments, then submit.** Snakemake downloads each conda
+   environment on first use, so do the first build on a machine with internet
+   access, then submit ([Troubleshooting](troubleshooting.qmd#the-clusters-compute-nodes-have-no-internet-access)):
+
+    ```bash
+    bash TTpipe.sh --conda-create-envs-only
+    sbatch TTpipe.sh
+    ```
+
+   Add `sbatch` options such as `--account=...` or `--partition=...` before
+   `TTpipe.sh` if your site's defaults do not fit the launcher job.
+
+After a first run, check each job's memory with `seff` or `sacct` and adjust
+the profile ([Tuning resources](#tuning-resources)).
+
+::: {.callout-note}
+### Example: running on Case Western's Pioneer cluster
+
+This is a worked example for one site, not the only way. Other sites differ in
+partition names, scratch locations and quotas; use the steps above and adapt.
+The facts here were observed on a real mouse run on Pioneer.
+
+- The `pioneer` profile uses partition `batch`.
+- Each user's scratch space is under `/scratch/pioneer/users/<your-username>/`.
+- The home-directory quota is small, and conda's package cache sits under the
+  Miniforge directory in `$HOME`. Environment builds failed with `Disk quota
+  exceeded` until `CONDA_PKGS_DIRS`, `XDG_CACHE_HOME` and `TMPDIR` pointed at
+  scratch.
+- Miniforge was installed in `$HOME/miniforge3` (the profile's `env.sh` uses
+  `TTPIPE_CONDA_ROOT`, default `$HOME/miniforge3`).
+- The login node has internet access, and the conda environments were built
+  there before the run was submitted.
 
 ```bash
-cp -r profiles/slurm-template profiles/<cluster>
-nano profiles/<cluster>/config.yaml     # slurm_account, slurm_partition
-nano profiles/<cluster>/env.sh          # module loads or Miniforge path
-echo 'export TTPIPE_PROFILE=profiles/<cluster>' >> ~/.bashrc
-source ~/.bashrc
-bash TTpipe.sh -n
+# once, in ~/.bashrc (replace <your-username>)
+export TTPIPE_PROFILE=profiles/pioneer
+export TTPIPE_OUTPUT_ROOT=/scratch/pioneer/users/<your-username>/ttpipe
+export CONDA_PKGS_DIRS=/scratch/pioneer/users/<your-username>/conda_pkgs
+export XDG_CACHE_HOME=/scratch/pioneer/users/<your-username>/cache
+export TMPDIR=/scratch/pioneer/users/<your-username>/tmp
+mkdir -p "$CONDA_PKGS_DIRS" "$XDG_CACHE_HOME" "$TMPDIR"
+
+# find your account, then replace <your-slurm-account> in profiles/pioneer/config.yaml
+sacctmgr show assoc user=$USER
+
+# on the login node: build the conda environments, then submit
+bash   TTpipe.sh --configfile config/mine.yaml --conda-create-envs-only
+sbatch TTpipe.sh --configfile config/mine.yaml
 ```
 
-`sinfo -s` lists partitions; `sacctmgr show assoc user=$USER` lists your accounts.
-Delete the `slurm_account` line if your cluster has no accounts.
+`config/mine.yaml` is your complete copy of the config
+([Configuration](configuration.qmd)). If your site's default account or
+partition does not fit the launcher job, add `--account=<your-slurm-account>`
+or `--partition=batch` to the `sbatch` line, before `TTpipe.sh`. The per-rule
+memory in `profiles/pioneer/config.yaml` is a starting value; measured on
+mouse, STAR alignment used about 26 GB and the STAR index build about 29 GB
+(about 36 minutes).
+:::
+
+## Single workstation {#workstation}
+
+With no scheduler, use `profiles/local` (it is the default, so nothing needs
+selecting):
+
+1. Install Miniforge once ([Conda version](#conda-version)); `env.sh` looks
+   for it at `$HOME/miniforge3` or `$TTPIPE_CONDA_ROOT`.
+2. Know your memory. STAR needs roughly 26 to 30 GB for a mouse genome
+   (measured about 26 GB for alignment and 29 GB for the index build); a
+   machine with less cannot align it, and there is no setting that avoids
+   that. Larger genomes need more and have not been measured.
+3. Set the limit in `profiles/local/config.yaml`: `resources: - mem_mb=64000`
+   is the total memory TTpipe may use at once. Set it to a little below your
+   machine's free memory. Snakemake starts jobs only while their `mem_mb`
+   fits, so with `star_align` at 40000 only one alignment runs at a time.
+   `cores: all` uses every CPU core.
+4. Dry run, then run, from the repository folder:
+
+    ```bash
+    bash TTpipe.sh -n
+    bash TTpipe.sh
+    ```
+
+   Run it inside `screen` or `tmux` (general knowledge) so that closing your
+   terminal does not stop it.
 
 ## Per-rule resources
 
@@ -96,8 +216,8 @@ mouse-genome needs, not benchmarks of TTpipe.**
 |------|---------|----------|-----------------|-------|
 | `fastqc` | 4 | 4000 | 120 | per sample and mate |
 | `fastp` | 8 | 8000 | 120 | only if `trim: true` |
-| `star_index` | 16 | 48000 | 240 | only if `build_star_index: true` |
-| `star_align` | 16 | 40000 | 480 | per sample; STAR on a mouse genome needs roughly 30 GB |
+| `star_index` | 16 | 48000 | 240 | only if `build_star_index: true`; mouse measured about 29 GB |
+| `star_align` | 16 | 40000 | 480 | per sample; STAR on a mouse genome measured about 26 GB |
 | `mapq_filter` | 8 | 4000 | 120 | |
 | `mark_duplicates` | 2 | 16000 | 240 | Picard; no Java heap is set by the rule |
 | `split_strands` | 8 | 8000 | 240 | per sample and strand |

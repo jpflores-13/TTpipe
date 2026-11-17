@@ -7,6 +7,80 @@ Nothing here is needed to run the pipeline, but it makes the QC report and
 the config keys much easier to follow. It contains no numbers from any
 real run.
 
+::: {.callout-note appearance="simple"}
+### Glossary
+
+Short definitions for readers new to either side of this field. Each term is
+explained again where it matters.
+
+- **4sU (4-thiouridine).** A uridine analogue that cells take up and build
+  into new RNA. Its sulfur atom lets labeled RNA be tagged and pulled out of
+  the total RNA.
+- **TT-seq / TTchem-seq.** Sequencing of only the RNA made during a short 4sU
+  pulse; a readout of transcription rather than of RNA abundance.
+- **dUTP / stranded libraries.** A library prep that keeps track of which
+  strand of the genome the RNA came from. In the common dUTP method, read 1
+  is antisense to the RNA and read 2 is sense. TTpipe calls this `dUTP`.
+- **MAPQ.** Mapping quality: a score for how confident the aligner is that a
+  read belongs where it was placed. Low values mean the read fits several
+  places. TTpipe keeps pairs with MAPQ of at least 10 by default.
+- **Duplicate.** Two read pairs with identical start and end positions. They
+  can come from PCR over-amplification or arise by chance for highly
+  expressed genes; Picard flags them and TTpipe removes them.
+- **DESeq2 size factors.** Per-sample scaling numbers DESeq2 uses to put
+  libraries of different depth on a comparable scale before testing for
+  differences; they assume most genes do not change.
+- **GSEA (gene-set enrichment analysis).** A test of whether the genes of a
+  predefined set, such as a pathway, sit toward the top or bottom of a list
+  of all genes ranked by their change.
+- **rRNA.** Ribosomal RNA, the most abundant RNA in a cell. A high share of
+  reads from rRNA means wasted sequencing.
+:::
+
+## Your path through TTpipe
+
+The steps a researcher goes through, from planning to sharing results. Each row of the table below the map says where the step is explained.
+
+```{mermaid}
+flowchart TD
+  A["1. Plan<br/>conditions, at least 2 replicates,<br/>paired-end stranded libraries"] --> B["2. Gather inputs<br/>FASTQ files, genome FASTA + GTF<br/>with matching names, optional gene sets"]
+  B --> C["3. Set up<br/>clone the repo, install conda,<br/>pick a profile, edit samplesheet + config"]
+  C --> D["4. Dry run<br/>bash TTpipe.sh -n"]
+  D --> E["5. Run<br/>sbatch TTpipe.sh (cluster)<br/>or bash TTpipe.sh (one machine)"]
+  E --> F["6. Read the QC report<br/>TTpipe_qc_report.html and MultiQC page"]
+  F --> G{"Does QC look acceptable?"}
+  G -- "warnings" --> H["Check the likely cause<br/>(table below), fix, rerun"]
+  H --> E
+  G -- "yes" --> I["7. Analysis<br/>DESeq2 tables, GSEA, Sankey"]
+  I --> J["8. Explore<br/>results explorer, bigWig tracks in a genome browser"]
+  J --> K["9. Keep and share<br/>config + samplesheet with the results"]
+```
+
+| Step | What you do | Where it is explained | What you get |
+|---|---|---|---|
+| 1. Plan | Choose conditions and replicates; use paired-end stranded libraries | [From reads to results](journey.qmd) | A design the pipeline can analyse |
+| 2. Gather inputs | FASTQ files (gzipped, paired-end), a genome FASTA and GTF with the same chromosome names, optional `.gmt` gene sets | [Setup](setup.qmd) | Files on disk |
+| 3. Set up | Install conda, choose a profile, fill in `samplesheet.txt` and `config/TTpipeConfig.yaml` | [Setup](setup.qmd), [Configuration](configuration.qmd), [Cluster](cluster.qmd) | A ready folder |
+| 4. Dry run | `bash TTpipe.sh -n` | [Running](running.qmd) | The list of jobs, no tools run |
+| 5. Run | `sbatch TTpipe.sh` or `bash TTpipe.sh` | [Running](running.qmd) | `output/` |
+| 6. QC | Open `output/qc/TTpipe_qc_report.html` | [Reading the QC report](qc.qmd) | Pass / warn / fail per sample |
+| 7. Analysis | Look at the DESeq2 tables, GSEA and Sankey | [Analysis](analysis.qmd) | `output/analysis/` |
+| 8. Explore | Open the results explorer; load the bigWigs in a genome browser | [Analysis](analysis.qmd#results-explorer) | Interactive volcano and MA plots |
+| 9. Keep and share | Keep the config, samplesheet and `profiles/` choice with the results | [Running](running.qmd) | A reproducible record |
+
+### When the QC report warns
+
+These are things to check, not guaranteed fixes. The [QC chapter](qc.qmd) explains each metric.
+
+| What you see | What to check first |
+|---|---|
+| Sense % low in every sample | The `strandedness` setting, then the library type ([how to change it](recipes.qmd#strandedness-dutp-or-forward)) |
+| Sense % about half in every sample | The library may not be strand-specific |
+| High "too short" % | Adapter content in FastQC; consider [trimming](recipes.qmd#trimming) |
+| One sample unlike its replicate (unique %, duplicates, correlation) | Flag or rerun that library; the others may be usable |
+| PCA puts a replicate with another condition | The sample labels in the samplesheet |
+| rRNA % high | Library prep; the metric underestimates because annotations hold few rRNA genes |
+
 ## What TT-seq measures
 
 A cell's RNA is a mixture of old and new molecules. A typical messenger RNA

@@ -2,10 +2,9 @@
 
 ## Prerequisites
 
-- A **Linux** machine or a SLURM cluster. A mouse STAR alignment needs
-  roughly 30 GB of memory (a starting guess in the profiles), and building the
-  index roughly 32 GB or more, so a typical laptop is not enough (see
-  [Cluster reference](cluster.qmd)). macOS arm64 is not supported: STAR
+- A **Linux** machine or a SLURM cluster. On a mouse genome, STAR alignment
+  measured about 26 GB of memory and the index build about 29 GB, so a typical
+  laptop is not enough (see [Cluster reference](cluster.qmd)). macOS arm64 is not supported: STAR
   2.7.9a, samtools 1.12 and HTSeq 0.13.5, the versions TTpipe pins, have no
   arm64 builds on bioconda.
 - `python3` >= 3.11 and `conda` >= 24.7.1, loaded by your site's
@@ -14,9 +13,12 @@
   lives elsewhere. See [Cluster Reference](cluster.qmd#conda-version).
 - Paired-end TT-seq FASTQ files (`.fastq.gz`).
 - A genome FASTA and a GTF annotation from the **same source**
-  ([below](#reference)). A STAR index is built once by the pipeline, or you
-  point at an existing one.
-- Optional, for GSEA: `.gmt` gene-set files (gene symbols).
+  ([below](#reference)), for mouse or another organism
+  ([Other genomes](#other-genomes)). A STAR index is built once by the
+  pipeline, or you point at an existing one.
+- Optional, for GSEA: `.gmt` gene-set files (gene symbols) for your organism.
+- Internet access on at least one machine, to build the conda environments
+  on first use ([Troubleshooting](troubleshooting.qmd#the-clusters-compute-nodes-have-no-internet-access)).
 
 There is no separate setup script: environments are built by Snakemake the
 first time a rule needs them (by default into a `.snakemake/conda` folder
@@ -77,8 +79,9 @@ differently: Ensembl uses `1`, `2`, `X`; GENCODE and UCSC use `chr1`, `chr2`,
 (STAR typically stops while building it; this was not tested here), or, if the
 index was built with one naming and the GTF has the other, HTSeq finds no genes
 and the counts are zero or close to it. The source guide mixes an Ensembl
-FASTA with a GENCODE GTF; TTpipe asks you to use one source and does **not**
-check it.
+FASTA with a GENCODE GTF; TTpipe asks you to use one source. At startup it
+compares only whether the first sequence of each file has a `chr` prefix and
+stops if one has and the other does not; it cannot catch other mismatches.
 
 Matching choices (these URLs were checked to exist):
 
@@ -114,9 +117,100 @@ empty and `build_star_index` is true, the index goes to
 ### Gene sets (optional)
 
 GSEA runs only when `gsea_collections` lists `.gmt` files. Download them
-yourself, for example the mouse collections from MSigDB, and make sure they use
-gene **symbols**, because TTpipe ranks genes by the `gene_name` in your GTF.
-Human symbols against a mouse GTF will match few genes.
+yourself, for example the collections from MSigDB for your organism, and make
+sure they use gene **symbols**, because TTpipe ranks genes by the `gene_name`
+in your GTF. Human symbols against a mouse GTF will match few genes.
+
+## Other genomes {#other-genomes}
+
+TTpipe has no mouse-specific code. A search of the workflows and scripts
+finds mouse only in default file paths, comments and the `genome:` key, which
+is a free-text label shown in reports. To work on another organism you change
+config keys; you do not edit rules or scripts.
+
+::: {.callout-warning}
+**What has been run.** Only mouse (mm10, GENCODE vM25) has been run on real
+data. Human is expected to work but has not been tested. Any other organism
+is untested, and STAR's memory need for genomes larger than mouse has not been
+measured.
+:::
+
+### Human
+
+1. Download the GENCODE human **primary assembly** genome FASTA and the GENCODE
+   GTF (comprehensive annotation) from the same GENCODE release family, from
+   the GENCODE site (<https://www.gencodegenes.org/human/>), and unzip them.
+   Both name chromosomes `chr1`, `chr2`, ..., so the names match. Check as in
+   [the chromosome-name trap](#the-chromosome-name-trap).
+2. Set the reference keys:
+
+    ```yaml
+    genome: 'hg38'                     # label only
+    genome_fasta: '/path/to/GRCh38.primary_assembly.genome.fa'
+    gtf: '/path/to/gencode.v<release>.annotation.gtf'
+    star_index: '/path/to/human_STARgenome'
+    build_star_index: true             # first run only; then false
+    sjdb_overhang: 100                 # read length - 1
+    ```
+
+3. `sjdb_overhang` is your read length minus 1 (for 101-base reads, 100). It
+   is used only when the index is built.
+4. For GSEA, download the human MSigDB collections as gene-symbol files; their
+   names end in `.Hs.symbols.gmt` (for example the Hallmark set), and list
+   them:
+
+    ```yaml
+    gsea_collections:
+      Hallmarks: '/path/to/h.all.v<release>.Hs.symbols.gmt'
+    ```
+
+5. Raise the STAR memory in your profile (`star_align`, `star_index`
+   `mem_mb`) if a first run is killed. The human genome is larger than the
+   mouse one; the mouse measurements (about 26 GB for alignment and about
+   29 GB for the index build) are a starting point for planning, not a
+   prediction.
+
+### Any other organism
+
+You need:
+
+- **A genome STAR can index**: a FASTA of the genome.
+- **A GTF** in which every gene has a line of feature type `gene`
+  carrying a `gene_id` attribute. TTpipe counts reads per gene with HTSeq and
+  builds its gene table from the `gene` lines.
+- **FASTA and GTF from the same source**, with identical chromosome names.
+
+Optional but useful:
+
+- A `gene_name` attribute on the `gene` lines. If it is absent, `gene_name`
+  falls back to `gene_id`, which is fine for counting and DESeq2 but means
+  that GSEA gene sets must be keyed by that id.
+- A gene type: `gene_type` (GENCODE style) or `gene_biotype` (Ensembl style).
+  It feeds the gene-type filter in the results explorer and the rRNA QC
+  metric. The rRNA metric counts genes whose type is exactly `rRNA` or
+  `Mt_rRNA`. If the annotation carries no type at all, the rRNA column is
+  blank; if it uses other names for ribosomal genes, those genes are not
+  recognised and the metric will read near zero, so do not take a low value as
+  evidence of clean libraries. Nothing else depends on it.
+
+`htseq_feature` and `htseq_id_attribute` let you name a different feature or
+attribute if your GTF is organised differently. Be careful with this: counting
+**exons** instead of **genes** changes the science, because in TT-seq most
+signal comes from introns of nascent RNA (see [From Reads to
+Results](journey.qmd#why-introns-count)). The gene table is always built from
+the `gene` lines, whatever `htseq_feature` is.
+
+Gene sets for GSEA must be `.gmt` files whose genes use the same names as the
+GTF's `gene_name` (or `gene_id` if there is no name). If no suitable gene sets
+exist for your organism, leave `gsea_collections: {}` and GSEA is skipped.
+
+### Memory for larger genomes
+
+STAR needs memory roughly in proportion to the genome (general knowledge).
+Mouse measured about 26 GB for alignment and about 29 GB for the index build.
+For anything larger, run one sample first, check what the job used with
+`seff <jobid>` or `sacct`, and raise `mem_mb` for `star_align` and
+`star_index` in your profile ([Cluster reference](cluster.qmd#tuning-resources)).
 
 ## 3. Config
 

@@ -223,6 +223,25 @@ DESeq2 uses every sample separately.
 
 ---
 
+## Your path through TTpipe
+
+From planning to sharing results (details and a "when QC warns" table: [https://jpflores-13.github.io/TTpipe/journey.html](https://jpflores-13.github.io/TTpipe/journey.html)).
+
+```mermaid
+flowchart TD
+  A["1. Plan<br/>conditions, at least 2 replicates,<br/>paired-end stranded libraries"] --> B["2. Gather inputs<br/>FASTQ files, genome FASTA + GTF<br/>with matching names, optional gene sets"]
+  B --> C["3. Set up<br/>clone the repo, install conda,<br/>pick a profile, edit samplesheet + config"]
+  C --> D["4. Dry run<br/>bash TTpipe.sh -n"]
+  D --> E["5. Run<br/>sbatch TTpipe.sh (cluster)<br/>or bash TTpipe.sh (one machine)"]
+  E --> F["6. Read the QC report<br/>TTpipe_qc_report.html and MultiQC page"]
+  F --> G{"Does QC look acceptable?"}
+  G -- "warnings" --> H["Check the likely cause<br/>(table below), fix, rerun"]
+  H --> E
+  G -- "yes" --> I["7. Analysis<br/>DESeq2 tables, GSEA, Sankey"]
+  I --> J["8. Explore<br/>results explorer, bigWig tracks in a genome browser"]
+  J --> K["9. Keep and share<br/>config + samplesheet with the results"]
+```
+
 ## Prerequisites
 
 - A Linux machine or a SLURM cluster (see [Compute sites](#compute-sites)).
@@ -266,7 +285,7 @@ choices:
   same GENCODE vM25 GTF. You must concatenate the chromosome files you want
   into one FASTA.
 
-TTpipe does not check that the names match; look at the first lines of both
+TTpipe stops at startup only if one file uses `chr`-prefixed names and the other does not (it compares the first sequence); it cannot catch other mismatches, so look at the first lines of both
 files (`grep '>' genome.fa | head`, `head genes.gtf`) before you start.
 
 ## Other genomes
@@ -310,8 +329,10 @@ the `gene_name` in the GTF, so the gene sets must use the same symbols.
 - ideally, a `gene_name` attribute; if it is missing, `gene_name` falls back
   to `gene_id` (GSEA then needs gene sets keyed by that id);
 - for the rRNA QC metric, GENCODE-style `gene_type` values `rRNA` and
-  `Mt_rRNA`, or Ensembl-style `gene_biotype` with the same values. Without
-  them the rRNA column is blank; nothing else is affected.
+  `Mt_rRNA`, or Ensembl-style `gene_biotype` with the same values. With no
+  type at all the rRNA column is blank; with other names for ribosomal genes
+  they are not recognised and the metric reads near zero. Nothing else is
+  affected.
 
 STAR memory for genomes larger than mouse is not measured. Mouse measured
 about 26 GB for alignment and about 29 GB for the index build; check your own

@@ -96,12 +96,18 @@ no counts anywhere, it stops with a message asking for `analysis_counts`.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `genome` | `mm10` | A label only (shown in the QC report header) |
-| `genome_fasta` | placeholder path | Genome FASTA; read only when building the STAR index. **Must match the GTF's chromosome names** |
-| `gtf` | placeholder path | Unzipped GTF: used by the STAR index, HTSeq and the gene table |
+| `genome` | `mm10` | A label only (shown in the QC report header). Change it to match your organism, for example `hg38` |
+| `genome_fasta` | placeholder path (mouse) | Genome FASTA; read only when building the STAR index. **Must match the GTF's chromosome names** |
+| `gtf` | placeholder path (mouse) | Unzipped GTF: used by the STAR index, HTSeq and the gene table. Needs `gene` lines with a `gene_id` attribute ([Other genomes](setup.qmd#other-genomes)) |
 | `star_index` | placeholder path | STAR genome directory. If empty and `build_star_index` is true: `<outputDir>/reference/star_index`. If empty and the index is not being built, the workflow stops |
-| `build_star_index` | `false` | `true`: build the index from `genome_fasta` and `gtf` (once; roughly 32 GB of memory or more, a starting guess) |
+| `build_star_index` | `false` | `true`: build the index from `genome_fasta` and `gtf` (once; about 29 GB of memory measured on a mouse genome, more for larger genomes) |
 | `sjdb_overhang` | `100` | `STAR --sjdbOverhang` at index build: read length minus 1. Passed explicitly (the guide uses STAR's default, 100) |
+
+The defaults are mouse, but no code is mouse-specific. For human or another
+organism, change `genome`, `genome_fasta`, `gtf`, `star_index`,
+`sjdb_overhang` and `gsea_collections`; the keys and caveats are in
+[Setup: Other genomes](setup.qmd#other-genomes). Only mouse has been run on
+real data.
 
 ## Notifications
 
@@ -147,8 +153,8 @@ BAMs. `bamCoverage` gets `--scaleFactor` and nothing else for normalisation.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `htseq_feature` | `gene` | `htseq-count --type`. `gene` counts the whole gene body, introns included: the key difference from an RNA-seq count. (The gene table is always built from the GTF's `gene` lines, whatever this is.) |
-| `htseq_id_attribute` | `gene_id` | `--idattr`; also the id attribute `gene_info.py` uses |
+| `htseq_feature` | `gene` | `htseq-count --type`. `gene` counts the whole gene body, introns included: the key difference from an RNA-seq count. Changing it (for example to `exon`) changes the science for TT-seq. (The gene table is always built from the GTF's `gene` lines, whatever this is.) |
+| `htseq_id_attribute` | `gene_id` | `--idattr`; also the id attribute `gene_info.py` uses. Change it only if your GTF names the id differently |
 | `htseq_nonunique` | `all` | `--nonunique`. `all` counts a read that overlaps several genes for each of them |
 | `count_strand` | `sum` | `sum`: forward + reverse per gene (the guide's code). `sense`: forward for + genes, reverse for - genes (the guide's text). [Recipe](recipes.qmd#counting-on-the-sense-strand-only) |
 
@@ -172,7 +178,7 @@ options stay at HTSeq's defaults (for example `--mode union`).
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `gsea_collections` | `{}` | `{Name: '/path/to/sets.gmt'}`. Empty = GSEA is skipped. Names go into file names |
+| `gsea_collections` | `{}` | `{Name: '/path/to/sets.gmt'}`. Empty = GSEA is skipped. Names go into file names. Use gene-symbol sets for your organism (for human, MSigDB files ending `.Hs.symbols.gmt`) |
 | `gsea_min_size` | `1` | Smallest gene set kept (guide: 0, no filter) |
 | `gsea_max_size` | `1000000` | Largest gene set kept (guide: no filter) |
 | `gsea_seed` | `42` | Random seed (the guide uses a time stamp) |
@@ -217,7 +223,7 @@ was checked against the code.
 
 | # | Topic | Guide | TTpipe |
 |---|-------|-------|--------|
-| 1 | Reference | An Ensembl FASTA (chromosomes `1`, `2`, `X`) paired with a GENCODE GTF (`chr1`...), whose names do not match | FASTA and GTF must come from the same source (default: GENCODE vM25 GTF with a chr-prefixed FASTA). TTpipe does not check this |
+| 1 | Reference | An Ensembl FASTA (chromosomes `1`, `2`, `X`) paired with a GENCODE GTF (`chr1`...), whose names do not match | FASTA and GTF must come from the same source (default: GENCODE vM25 GTF with a chr-prefixed FASTA). TTpipe checks only whether both use a `chr` prefix, on the first sequence |
 | 2 | Strandedness | dUTP hard-coded | Config key `strandedness` (`dUTP` or `forward`), checked by the QC report's sense % |
 | 3 | Count strand | Text and code disagree | `count_strand`: `sum` (forward + reverse, the guide's code, default) or `sense` (the guide's text) |
 | 4 | Scale factors | Hard-coded | Computed, (max / this) over merged-replicate mapped pairs (records / 2); optional per-condition override |
