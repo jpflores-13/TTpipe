@@ -77,6 +77,7 @@ qc_thresholds: {...}
 | `run_analysis` | `true` | DESeq2, GSEA, Sankey |
 | `qc_report` | `true` | Per-sample QC table and `TTpipe_qc_report.html` |
 | `results_explorer` | `true` | Interactive results page `analysis/TTpipe_results_explorer.html` (volcano / MA, gene search, tables, GSEA tab). Needs `run_analysis`; its padj and log2FC cut-offs start at `alpha` and `lfc_threshold`. See [Differential expression and GSEA](analysis.qmd#results-explorer) |
+| `stranded_plots` | `true` | Interactive stranded signal page `analysis/TTpipe_stranded_signal.html`. Built when the stranded bigWigs are made in the run or already exist; skipped quietly in analysis-only runs without bigWigs. See [Stranded signal](analysis.qmd#stranded-signal) and the [next section](#stranded-signal-plots) |
 | `multiqc` | `true` | Also `TTpipe_multiqc.html` (FastQC, fastp, STAR, Picard). Only on processing runs |
 | `multiqc_extra` | `''` | Extra arguments passed to `multiqc` |
 | `analysis_counts` | `''` | For `run_processing: false`: path to an existing count matrix (tab-separated, first column `gene_id`, header = sample `Name`s). Empty = use this pipeline's `counts/counts_deseq2.txt` |
@@ -148,6 +149,40 @@ added.
 
 Mapped pairs are BAM records divided by two, on the replicate-merged all-reads
 BAMs. `bamCoverage` gets `--scaleFactor` and nothing else for normalisation.
+
+## Stranded signal plots {#stranded-signal-plots}
+
+All optional. They control the page `analysis/TTpipe_stranded_signal.html` (see
+[Stranded signal](analysis.qmd#stranded-signal)) and have no effect when
+`stranded_plots: false`. The page only reads existing outputs; changing a key
+reruns just the `stranded_signal` rule.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `stranded_plots` | `true` | Build the page. It needs the stranded bigWigs from this run or from an earlier run in the same `outputDir` |
+| `track_loci` | `[]` | Loci to draw: gene symbols (case-insensitive), Ensembl gene ids (with or without `.version`) or `chr:start-end` (1-based, inclusive). Unresolvable entries are listed on the page and in the log |
+| `track_top_degs` | `10` | The N most significant genes (smallest non-NA padj) of each contrast. `0` = off. Ignored when the analysis does not run in the workflow |
+| `track_regions_bed` | `''` | BED file of regions to draw (chrom, start, end, optional name and strand). The name labels the track |
+| `track_max_loci` | `40` | Cap on the number of tracks (order: `track_loci`, top DEGs, BED) |
+| `track_flank` | `5000` | Bases added on both sides of the gene or region |
+| `track_bin_size` | `100` | Bases per bin (bigWig signal averaged; raised in whole multiples for very wide windows) |
+| `track_static_formats` | `[]` | Also write one figure per locus to `analysis/stranded_signal/`: any of `svg`, `pdf`, `png`. Needs matplotlib |
+| `metagene_groups` | `['protein_coding', 'lncRNA']` | `gene_type` values for the metagene dropdown (case-insensitive; `all` means every gene; `lncRNA` also takes the older GENCODE types such as `lincRNA`, `antisense`, `processed_transcript`). Groups with fewer than 20 expressed genes are skipped |
+| `metagene_flank` | `3000` | Bases either side of the TSS (and of the scaled body) |
+| `metagene_min_length` | `1000` | Genes shorter than this are left out of the gene-body view (at least 100) |
+| `metagene_bed` | `''` | BED of regions to profile, centre-aligned. A strand column orients them. TTpipe does not call eRNAs; this only chooses where to look |
+| `strand_table_min_reads` | `50` | Genes need this many reads (both strands, all samples) to enter the antisense-fraction table; the top 5000 by reads are embedded |
+
+The expressed-gene filter of the metagene reuses `min_count` and `min_samples`
+from the DESeq2 section. An example:
+
+```yaml
+track_loci: ['Gapdh', 'ENSMUSG00000057666', 'chr1:3000000-3010000']
+track_top_degs: 5
+track_regions_bed: 'my_enhancers.bed'
+metagene_groups: ['protein_coding', 'lncRNA']
+track_static_formats: ['svg']
+```
 
 ## Gene counts (HTSeq)
 

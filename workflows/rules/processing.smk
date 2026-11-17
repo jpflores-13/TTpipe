@@ -95,8 +95,8 @@ if RUN_PROCESSING:
     if BUILD_STAR_INDEX:
         rule star_index:
             input:
-                fasta = GENOME_FASTA,
-                gtf = GTF,
+                fasta = STAR_FASTA,       # = genome_fasta and gtf, or the combined host + spike-in files (spike_in.enabled)
+                gtf = STAR_GTF,
             output:
                 sa = STAR_INDEX + "/SA",
                 chrlen = STAR_INDEX + "/chrNameLength.txt",
@@ -271,24 +271,25 @@ if RUN_PROCESSING:
     ## Scale factor per condition = (largest mapped read-pair count) / (this one's), on the merged all-reads
     ## BAMs, pairs = records / 2 (guide). config scale_factors overrides a condition (source 'config').
     ## The maximum is taken over all conditions, including overridden ones.
-    rule scale_factors:
-        input:
-            bams = expand(OUT + "/merged/{condition}.bam", condition=CONDITIONS),
-        output:
-            table = SCALE_FACTORS,
-        log:
-            OUT + "/logs/scale_factors.log",
-        benchmark:
-            OUT + "/benchmarks/scale_factors.tsv",
-        threads: 1
-        conda: ENVS + "/ttpipe_tracks.yml"
-        params:
-            cond_bams = " ".join(f"{c}={OUT}/merged/{c}.bam" for c in CONDITIONS),
-            overrides = " ".join(f"{k}={v}" for k, v in (config.get("scale_factors") or {}).items()),
-            script = SCRIPTS + "/scale_factors.py",
-            tmp = OUT + "/tracks/scale_factors_pairs.tmp",
-        shell:
-            """
+    if not SPIKE_ENABLED:   # the spike-in variants of this rule are in rules/spike.smk
+        rule scale_factors:
+            input:
+                bams = expand(OUT + "/merged/{condition}.bam", condition=CONDITIONS),
+            output:
+                table = SCALE_FACTORS,
+            log:
+                OUT + "/logs/scale_factors.log",
+            benchmark:
+                OUT + "/benchmarks/scale_factors.tsv",
+            threads: 1
+            conda: ENVS + "/ttpipe_tracks.yml"
+            params:
+                cond_bams = " ".join(f"{c}={OUT}/merged/{c}.bam" for c in CONDITIONS),
+                overrides = " ".join(f"{k}={v}" for k, v in (config.get("scale_factors") or {}).items()),
+                script = SCRIPTS + "/scale_factors.py",
+                tmp = OUT + "/tracks/scale_factors_pairs.tmp",
+            shell:
+                """
             : > {params.tmp}
             for kv in {params.cond_bams}; do
                 c=${{kv%%=*}}; b=${{kv#*=}}
@@ -331,27 +332,28 @@ if RUN_PROCESSING:
     ## A condition's scale factor does not apply to a single replicate, so the factor here is
     ## (largest final read-pair count over ALL samples) / (this sample's), from the *_final_pairs.txt files,
     ## the same max/this rule as the condition tracks. config scale_factors is not used for these.
-    rule bigwig_sample:
-        input:
-            bam = lambda w: BAM.format(sample=w.sample) if w.suffix == "" else STRAND_BAM.format(sample=w.sample, strand=w.suffix[1:]),
-            bai = lambda w: BAI.format(sample=w.sample) if w.suffix == "" else STRAND_BAI.format(sample=w.sample, strand=w.suffix[1:]),
-            stats = expand(FINAL_STATS, sample=SAMPLES),
-        output:
-            bw = OUT + "/tracks/samples/{sample}{suffix}.bw",
-        wildcard_constraints:
-            suffix = "|_forward|_reverse",
-        log:
-            OUT + "/{sample}/logs/bigwig_sample{suffix}.log",
-        benchmark:
-            OUT + "/{sample}/benchmarks/bigwig_sample{suffix}.tsv",
-        threads: 8
-        conda: ENVS + "/ttpipe_tracks.yml"
-        params:
-            bin = config.get("bigwig_bin_size", 50),
-            extra = config.get("bigwig_extra", ""),
-            script = SCRIPTS + "/scale_factors.py",
-        shell:
-            """
+    if not SPIKE_ENABLED:   # the spike-in variants of this rule are in rules/spike.smk
+        rule bigwig_sample:
+            input:
+                bam = lambda w: BAM.format(sample=w.sample) if w.suffix == "" else STRAND_BAM.format(sample=w.sample, strand=w.suffix[1:]),
+                bai = lambda w: BAI.format(sample=w.sample) if w.suffix == "" else STRAND_BAI.format(sample=w.sample, strand=w.suffix[1:]),
+                stats = expand(FINAL_STATS, sample=SAMPLES),
+            output:
+                bw = OUT + "/tracks/samples/{sample}{suffix}.bw",
+            wildcard_constraints:
+                suffix = "|_forward|_reverse",
+            log:
+                OUT + "/{sample}/logs/bigwig_sample{suffix}.log",
+            benchmark:
+                OUT + "/{sample}/benchmarks/bigwig_sample{suffix}.tsv",
+            threads: 8
+            conda: ENVS + "/ttpipe_tracks.yml"
+            params:
+                bin = config.get("bigwig_bin_size", 50),
+                extra = config.get("bigwig_extra", ""),
+                script = SCRIPTS + "/scale_factors.py",
+            shell:
+                """
             SF=$({PY} {params.script} --pairs {input.stats} --factor-of {wildcards.sample} 2> {log})
             bamCoverage --scaleFactor $SF -p {threads} -b {input.bam} -o {output.bw} \
                 --binSize {params.bin} {params.extra} >> {log} 2>&1
@@ -366,7 +368,7 @@ if RUN_PROCESSING:
     rule htseq_count:
         input:
             bam = STRAND_BAM,
-            gtf = GTF,
+            gtf = HTSEQ_GTF,          # = gtf, or the combined host + spike-in GTF (spike_in.enabled)
         output:
             counts = HTSEQ,
         log:
@@ -387,27 +389,28 @@ if RUN_PROCESSING:
             """
 
     ## Per-sample HTSeq files -> gene x sample matrices (summary rows removed). counts_deseq2 per count_strand.
-    rule count_matrix:
-        input:
-            fwd = expand(HTSEQ, sample=SAMPLES, strand="forward"),
-            rev = expand(HTSEQ, sample=SAMPLES, strand="reverse"),
-            gene_info = GENE_INFO,
-        output:
-            fwd = COUNTS_FORWARD,
-            rev = COUNTS_REVERSE,
-            deseq2 = COUNTS_DESEQ2,
-        log:
-            OUT + "/logs/count_matrix.log",
-        benchmark:
-            OUT + "/benchmarks/count_matrix.tsv",
-        threads: 1
-        conda: ENVS + "/ttpipe_count.yml"
-        params:
-            names = " ".join(SAMPLES),
-            mode = COUNT_STRAND,
-            script = SCRIPTS + "/make_count_matrix.py",
-        shell:
-            """
+    if not SPIKE_ENABLED:   # the spike-in variants of this rule are in rules/spike.smk
+        rule count_matrix:
+            input:
+                fwd = expand(HTSEQ, sample=SAMPLES, strand="forward"),
+                rev = expand(HTSEQ, sample=SAMPLES, strand="reverse"),
+                gene_info = GENE_INFO,
+            output:
+                fwd = COUNTS_FORWARD,
+                rev = COUNTS_REVERSE,
+                deseq2 = COUNTS_DESEQ2,
+            log:
+                OUT + "/logs/count_matrix.log",
+            benchmark:
+                OUT + "/benchmarks/count_matrix.tsv",
+            threads: 1
+            conda: ENVS + "/ttpipe_count.yml"
+            params:
+                names = " ".join(SAMPLES),
+                mode = COUNT_STRAND,
+                script = SCRIPTS + "/make_count_matrix.py",
+            shell:
+                """
             {PY} {params.script} --names {params.names} --forward {input.fwd} --reverse {input.rev} \
                 --count-strand {params.mode} --gene-info {input.gene_info} \
                 --out-forward {output.fwd} --out-reverse {output.rev} --out-deseq2 {output.deseq2} 2> {log}

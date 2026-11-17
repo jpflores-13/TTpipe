@@ -13,6 +13,9 @@ PROCESSING
   htseq_count      <- split_strands
   gene_info        <- (inputs from the samplesheet / config)
 
+ANALYSIS
+  stranded_signal  <- bigwig, count_matrix, gene_info, scale_factors
+
 REPORTING
   qc_report        <- bigwig, qc_summary, scale_factors
   qc_summary       <- count_matrix, gene_info, mapq_filter, mark_duplicates, star_align

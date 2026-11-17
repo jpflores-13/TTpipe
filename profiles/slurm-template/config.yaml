@@ -40,6 +40,7 @@ set-threads:
   fgsea: 2
   sankey: 1
   results_explorer: 1
+  stranded_signal: 2
   qc_summary: 1
   qc_report: 2
   multiqc: 1
@@ -104,6 +105,9 @@ set-resources:
   results_explorer:
     runtime: 30
     mem_mb: 4000
+  stranded_signal:
+    runtime: 120
+    mem_mb: 8000
   qc_summary:
     runtime: 15
     mem_mb: 2000

@@ -1,0 +1,19 @@
+name: ttpipe_plots
+## Stranded signal page (scripts/stranded_signal.py): reads bigWigs with pyBigWig, draws with plotly (inline HTML)
+## and, only if track_static_formats is set, matplotlib.
+## Existence checked on 2026-11-17 with read-only queries to https://api.anaconda.org/package/<channel>/<package>/files:
+##   bioconda::pybigwig 0.3.30 has py310-py314 builds for linux-64, osx-64 and osx-arm64;
+##   conda-forge::matplotlib-base 3.11.2 (linux-64, osx-64, osx-arm64, py311 builds), plotly 7.1.0 (noarch),
+##   pandas 3.1.1 and numpy 2.5.5 (all three platforms).
+## This is NOT a solved environment: the file has not been solved or run with conda/mamba, so a first run on your
+## system may need version adjustments. Version floors only (pybigwig 0.3.30 itself needs numpy >= 2).
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - pandas>=2.2
+  - numpy>=1.26
+  - plotly>=5.24
+  - pybigwig>=0.3.22
+  - matplotlib-base>=3.8

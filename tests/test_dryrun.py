@@ -168,3 +168,71 @@ def test_bad_samplesheets_are_rejected(tmp_path):
 def test_launcher_scripts_parse(script):
     r = subprocess.run(["bash", "-n", script], cwd=ROOT, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+# ---- stranded signal page (rule stranded_signal, workflows/rules/stranded.smk) ----
+
+@needs_snakemake
+def test_stranded_plots_switch_adds_or_removes_exactly_one_job():
+    on, off = jobs(dry_run(FULL, stranded_plots="True")), jobs(dry_run(FULL, stranded_plots="False"))
+    assert on["stranded_signal"] == 1 and "stranded_signal" not in off
+    assert on["total"] == off["total"] + 1
+    assert jobs(dry_run(FULL)) == on                       # shipped config: on by default
+    assert "output_ci/analysis/TTpipe_stranded_signal.html" in dry_run(FULL).stdout
+
+
+@needs_snakemake
+def test_stranded_signal_inputs_follow_the_run_mode():
+    r = dry_run(FULL)
+    block = r.stdout.split("rule stranded_signal:")[1].split("\n\n")[0]
+    for part in ("DMSO_forward.bw", "2H_reverse.bw", "scale_factors.tsv", "gene_info.tsv", "genes.gtf", "counts_forward.txt",
+                 "counts_reverse.txt", "counts_deseq2.txt", "samplesheet.txt", "degs_2H_vs_DMSO.csv"):
+        assert part in block, part
+    r = dry_run(FULL, track_top_degs="0")
+    assert "degs_2H_vs_DMSO.csv" not in r.stdout.split("rule stranded_signal:")[1].split("\n\n")[0]
+    r = dry_run(PROC)                                      # processing only: no DESeq2 tables exist, none are requested
+    assert r.returncode == 0, r.stderr
+    j = jobs(r)
+    assert j["stranded_signal"] == 1 and "deseq2" not in j
+    assert "degs_" not in r.stdout.split("rule stranded_signal:")[1].split("\n\n")[0]
+
+
+@needs_snakemake
+def test_stranded_signal_skipped_cleanly_in_analysis_only_mode():
+    r = dry_run(ANA)
+    assert r.returncode == 0, r.stderr                     # no bigWigs: skipped, not an error
+    assert "stranded_signal" not in jobs(r)
+    r = dry_run(ANA, stranded_plots="True")
+    assert r.returncode == 0 and "stranded_signal" not in jobs(r)
+
+
+@needs_snakemake
+def test_stranded_signal_in_analysis_only_when_bigwigs_already_exist(tmp_path):
+    out = tmp_path / "out"
+    for sub, names in {"tracks": ["DMSO_forward.bw", "DMSO_reverse.bw", "2H_forward.bw", "2H_reverse.bw", "scale_factors.tsv"],
+                       "counts": ["gene_info.tsv", "counts_forward.txt", "counts_reverse.txt"]}.items():
+        (out / sub).mkdir(parents=True)
+        for n in names:
+            (out / sub / n).write_text("")
+    r = dry_run(ANA, outputDir=str(out))
+    assert r.returncode == 0, r.stderr
+    j = jobs(r)
+    assert j["stranded_signal"] == 1 and "bigwig" not in j
+    assert "stranded_signal" not in jobs(dry_run(ANA, outputDir=str(out), stranded_plots="False"))
+
+
+@needs_snakemake
+def test_stranded_config_values_reach_the_command_and_bad_formats_are_rejected():
+    r = dry_run(FULL, track_loci="[Gapdh, 'chr1:100-200']", track_flank="2000", track_bin_size="50", track_max_loci="7",
+                metagene_flank="1500", track_static_formats="[svg]")
+    assert r.returncode == 0, r.stderr
+    r2 = subprocess.run([SNAKEMAKE, "-n", "-p", "-s", "workflows/TTpipe.snakefile", "--cores", "1", "--configfile", MAIN, FULL,
+                         "--config", "track_loci=[Gapdh, 'chr1:100-200']", "track_flank=2000", "track_bin_size=50",
+                         "track_max_loci=7", "metagene_flank=1500", "track_static_formats=[svg]"],
+                        cwd=ROOT, capture_output=True, text=True)
+    cmd = r2.stdout.split("stranded_signal.py")[1].split("2>")[0]
+    for frag in ("--loci Gapdh chr1:100-200", "--flank 2000", "--bin-size 50", "--max-loci 7", "--metagene-flank 1500",
+                 "--static-formats svg", "--top-degs 10", "--degs "):
+        assert frag in cmd, frag
+    bad = dry_run(FULL, track_static_formats="[gif]")
+    assert bad.returncode != 0 and "track_static_formats" in (bad.stderr + bad.stdout)

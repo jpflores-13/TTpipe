@@ -78,6 +78,7 @@ counts_deseq2.txt + samples_deseq2.txt --> deseq2               analysis/deseq2/
 degs_*.csv + gene_info --> rnk --> fgsea                        analysis/gsea/{comparison}.rnk, {collection}_{comparison}.tsv
 degs_*.csv --> sankey                                           analysis/figures/sankey.pdf, analysis/deseq2/sankey_categories.tsv
 DEG tables + gene_info + normalized counts [+ fgsea] --> results_explorer   analysis/TTpipe_results_explorer.html
+stranded bigWigs + scale_factors + gene_info + GTF + strand counts [+ DEG tables] --> stranded_signal   analysis/TTpipe_stranded_signal.html
 everything --> qc_summary --> qc_report                         qc/sample_qc.tsv, qc/TTpipe_qc_report.html
 FastQC, [fastp], STAR, Picard --> multiqc                       qc/TTpipe_multiqc.html
 ```
@@ -116,6 +117,7 @@ flowchart LR
     fgsea[fgsea]
     rnk[rnk]
     results_explorer[results_explorer]
+    stranded_signal[stranded_signal]
   end
   subgraph Reporting["Reporting"]
     qc_report[qc_report]
@@ -123,13 +125,16 @@ flowchart LR
     multiqc[multiqc]
   end
   bigwig --> qc_report
+  bigwig --> stranded_signal
   bigwig_sample --> qc_report
   count_matrix --> deseq2
   count_matrix --> qc_summary
+  count_matrix --> stranded_signal
   deseq2 --> qc_report
   deseq2 --> results_explorer
   deseq2 --> rnk
   deseq2 --> sankey
+  deseq2 --> stranded_signal
   fastp --> multiqc
   fastp --> star_align
   fastqc --> multiqc
@@ -138,6 +143,7 @@ flowchart LR
   gene_info --> qc_summary
   gene_info --> results_explorer
   gene_info --> rnk
+  gene_info --> stranded_signal
   htseq_count --> count_matrix
   mapq_filter --> mark_duplicates
   mapq_filter --> qc_summary
@@ -154,6 +160,7 @@ flowchart LR
   sample_table --> results_explorer
   scale_factors --> bigwig
   scale_factors --> qc_report
+  scale_factors --> stranded_signal
   split_strands --> bigwig_sample
   split_strands --> htseq_count
   split_strands --> merge_bams
@@ -272,12 +279,13 @@ The single source of truth for settings. Key groups:
 | Group | Keys |
 |-------|------|
 | Samples | `samplesheet` |
-| What to run | `run_processing`, `run_analysis`, `qc_report`, `results_explorer`, `multiqc`, `multiqc_extra`, `analysis_counts` |
+| What to run | `run_processing`, `run_analysis`, `qc_report`, `results_explorer`, `stranded_plots`, `multiqc`, `multiqc_extra`, `analysis_counts` |
 | Site and location | `hpcProfile`, `outputDir` |
 | Reference | `genome`, `genome_fasta`, `gtf`, `star_index`, `build_star_index`, `sjdb_overhang` |
 | Notifications | `notify` (`email`, `events`, `command`) |
 | Processing | `trim`, `fastp_extra`, `star_extra`, `min_mapq`, `remove_duplicates`, `picard_extra`, `strandedness` |
 | Tracks | `scale_factors`, `bigwig_bin_size`, `bigwig_extra`, `sample_tracks` |
+| Stranded signal | `stranded_plots`, `track_loci`, `track_top_degs`, `track_regions_bed`, `track_flank`, `track_bin_size`, `track_max_loci`, `track_static_formats`, `metagene_groups`, `metagene_flank`, `metagene_min_length`, `metagene_bed`, `strand_table_min_reads` |
 | Counts | `htseq_feature`, `htseq_id_attribute`, `htseq_nonunique`, `count_strand` |
 | DESeq2 | `reference_condition`, `condition_order`, `comparisons`, `design`, `min_count`, `min_samples`, `alpha`, `lfc_threshold` |
 | GSEA | `gsea_collections`, `gsea_min_size`, `gsea_max_size`, `gsea_seed` |
@@ -294,7 +302,7 @@ Loads the config, includes `rules/common.smk`, and defines:
 - `rule sample_table`: a `run:` rule (no tool, no conda environment) that
   writes `counts/samples_deseq2.txt` (`sample`, `condition`, `replicate`)
   from the samplesheet. DESeq2 and the QC report read it.
-- includes `processing.smk`, `analysis.smk`, `explorer.smk`, `report.smk`, `multiqc.smk`.
+- includes `processing.smk`, `analysis.smk`, `explorer.smk`, `stranded.smk`, `report.smk`, `multiqc.smk`.
 
 ### `workflows/rules/common.smk`
 
@@ -329,7 +337,7 @@ output paths and targets. It:
 - sets `COUNTS_MATRIX` to `analysis_counts` if given, else
   `counts/counts_deseq2.txt`, and refuses an analysis-only run that has
   neither;
-- defines the targets: `processing_targets()`, `analysis_targets()`,
+- defines the targets: `processing_targets()`, `analysis_targets()`, `stranded_targets()`,
   `report_targets()` and `all_targets()` (MultiQC only on processing runs);
 - defines `notify()` and `log_tail()`. `notify` runs `notify: command:`
   (default `mail -s {subject} {email}`, body on stdin) when an address is
@@ -596,6 +604,50 @@ warns above 40 MB. Limits: no genome browser or tracks, no eRNA calling,
 biotypes come only from the annotation, and it has been run only on
 synthetic data.
 
+### Stranded signal (`stranded.smk`)
+
+| Rule | Script | Config keys | Env | Threads | Output |
+|------|--------|-------------|-----|---------|--------|
+| `stranded_signal` | `scripts/stranded_signal.py` | `stranded_plots`, `track_*`, `metagene_*`, `strand_table_min_reads`, `min_count`, `min_samples`, `condition_order`, `qc_report_banner` | `ttpipe_plots` | 2 | `analysis/TTpipe_stranded_signal.html` (and `analysis/stranded_signal/*.{svg,pdf,png}` when `track_static_formats` is set) |
+
+Inputs: the stranded bigWigs of every condition (`BIGWIG_STRAND`),
+`tracks/scale_factors.tsv`, `counts/gene_info.tsv`, the GTF (a plain path),
+`counts_forward.txt`, `counts_reverse.txt`, `COUNTS_MATRIX` (expressed-gene
+filter), the samplesheet (sample to condition), and, only when
+`track_top_degs > 0` and the analysis runs in this workflow, every
+`degs_{comparison}.csv`; plus `track_regions_bed` / `metagene_bed` when set.
+It does not depend on `sample_table`, so processing-only runs do not gain that
+job. `stranded_targets()` in `common.smk` adds `STRANDED_SIGNAL` to
+`all_targets()` when `stranded_plots` is true (default) and either processing
+runs in this workflow or, in an analysis-only run, every stranded bigWig, the
+scale factors, the gene table and the strand counts already exist; otherwise
+the page is skipped without an error. Rerun only this rule after editing
+loci by running the workflow again: Snakemake sees the changed parameters.
+
+### `scripts/stranded_signal.py`
+
+Data preparation and HTML are separate, as in `results_explorer.py` (it
+reuses that file's CSS, `sig_round` and `to_json`). `select_loci()` resolves
+`track_loci` (symbol, case-insensitive; gene_id with or without version;
+`chr:start-end`), the top DEGs per contrast (smallest non-NA padj) and a BED,
+de-duplicates and caps; unresolvable entries are returned, not raised.
+`bin_mean()` reads the per-base values of a window with pyBigWig `values()`
+and averages them per bin (cumulative sum), because pyBigWig's `stats(type="mean")`
+ignores uncovered bases and `stats(nBins=...)` was about 100 times slower on
+the metagene workload; NaN / missing bases are 0. `read_gene_models()` streams the GTF once and keeps only exons
+(and gene lines) overlapping a selected window; `models_for_window()` merges
+the exons of each gene into one collapsed model and assigns display rows.
+`profile_group()` builds sense / antisense metagene matrices (regions x bins),
+`orient_profiles()` flips `-` genes so 5' is on the left and swaps the strands
+(sense = forward for `+`, reverse for `-`); `strand_table()` computes the
+antisense fraction. `write_static_figures()` is the optional matplotlib
+output. Coordinates: gene_info is 1-based inclusive, bigWig windows are
+0-based half-open. Opening the page with `#selftest` appended runs a scripted
+pass through the real controls; `tests/test_stranded_signal.py` uses it with
+headless Chrome. Limits: scale factors are library-size only (no spike-in),
+gene models are collapsed unions of exons, no eRNA calling, and it has been
+run only on synthetic data.
+
 ### `scripts/make_dag.py`
 
 Runs `snakemake --rulegraph` on the placeholder fixtures in `tests/dryrun/`
@@ -616,6 +668,7 @@ them; `--check` exits non-zero if the committed files are out of date
 | `ttpipe_count.yml` | python 3.8, htseq 0.13.5, pandas | `gene_info`, `htseq_count`, `count_matrix` |
 | `ttpipe_r.yml` | r-base 4.4.3, DESeq2 1.46.0, fgsea 1.32.2, BiocParallel 1.40.0, ggplot2 3.5.1, ggforce 0.4.2, tidyr 1.3.1 | `deseq2`, `rnk`, `fgsea`, `sankey` |
 | `ttpipe_qc.yml` | python 3.11, pandas, numpy, pyyaml, tabulate, plotly (version floors) | `qc_summary`, `qc_report`, `results_explorer` |
+| `ttpipe_plots.yml` | python 3.11, pandas, numpy, plotly, pybigwig, matplotlib-base (version floors; existence checked, not solved) | `stranded_signal` |
 | `ttpipe_multiqc.yml` | python 3.10, multiqc 1.14 | `multiqc` |
 
 Versions of the alignment, tracks and count environments are the ones the
@@ -656,6 +709,11 @@ disk quotas, memory kills and first-run internet access,
   padj, missing normalized counts / GSEA, gene_name fallback, and (when
   Chrome is installed) the page's JavaScript in headless Chrome, all on
   synthetic tables.
+- `tests/test_stranded_signal.py`: loci resolution, bins and NaN handling, strand
+  orientation of tracks and metagene, gene models from a small GTF, the
+  antisense-fraction arithmetic, page self-containment, the rule command on
+  synthetic files, and (when Chrome is installed) the page's JavaScript in
+  headless Chrome. Needs pyBigWig (skipped without it); all data synthetic.
 - `tests/test_qc_report.py`: the parsers, thresholds, PCA, and synthetic
   end-to-end reports (invented numbers, labelled as synthetic).
 - `tests/test_dryrun.py`: Snakemake dry runs (`snakemake -n`) against the

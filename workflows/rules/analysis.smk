@@ -7,47 +7,49 @@
 SANKEY_LABELS = [t for t, r in COMPARISONS] if len({r for _, r in COMPARISONS}) == 1 else COMPARISON_NAMES
 
 
-rule deseq2:
-    input:
-        counts = COUNTS_MATRIX,
-        samples = SAMPLES_DESEQ2,
-    output:
-        degs = expand(DEGS, comparison=COMPARISON_NAMES),
-        summary = DEG_SUMMARY,
-        norm = NORM_COUNTS,
-        vst = VST_COUNTS,
-        pca = PCA_PDF,
-    params:
-        degs_pattern = lambda wildcards: DEGS,   # keeps the literal {comparison} (a lambda switches off wildcard expansion); filled in by the script
-        design = config.get("design", "~ condition + replicate"),
-        reference = REFERENCE,
-        condition_order = ",".join(CONDITIONS),
-        comparisons = ",".join(f"{t}:{r}" for t, r in COMPARISONS),
-        names = ",".join(COMPARISON_NAMES),
-        alpha = config.get("alpha", 0.01),
-        lfc = config.get("lfc_threshold", 0),
-        min_count = config.get("min_count", 10),
-        min_samples = config.get("min_samples", 2),
-        script = SCRIPTS + "/run_deseq2.R",
-    log:
-        OUT + "/logs/deseq2.log"
-    benchmark:
-        OUT + "/benchmarks/deseq2.txt"
-    threads: 2
-    conda:
-        ENVS + "/ttpipe_r.yml"
-    shell:
-        """
-        Rscript {params.script} \
-            --counts {input.counts} --samples {input.samples} \
-            --design '{params.design}' --reference {params.reference} \
-            --condition-order '{params.condition_order}' \
-            --comparisons '{params.comparisons}' --names '{params.names}' \
-            --alpha {params.alpha} --lfc-threshold {params.lfc} \
-            --min-count {params.min_count} --min-samples {params.min_samples} \
-            --degs-pattern '{params.degs_pattern}' --summary {output.summary} \
-            --norm {output.norm} --vst {output.vst} --pca {output.pca} > {log} 2>&1
-        """
+## With spike-in size factors (spike_in.normalize has 'deseq2') the variant in rules/spike.smk is used instead.
+if not SPIKE_DESEQ2:
+    rule deseq2:
+        input:
+            counts = COUNTS_MATRIX,
+            samples = SAMPLES_DESEQ2,
+        output:
+            degs = expand(DEGS, comparison=COMPARISON_NAMES),
+            summary = DEG_SUMMARY,
+            norm = NORM_COUNTS,
+            vst = VST_COUNTS,
+            pca = PCA_PDF,
+        params:
+            degs_pattern = lambda wildcards: DEGS,   # keeps the literal {comparison} (a lambda switches off wildcard expansion); filled in by the script
+            design = config.get("design", "~ condition + replicate"),
+            reference = REFERENCE,
+            condition_order = ",".join(CONDITIONS),
+            comparisons = ",".join(f"{t}:{r}" for t, r in COMPARISONS),
+            names = ",".join(COMPARISON_NAMES),
+            alpha = config.get("alpha", 0.01),
+            lfc = config.get("lfc_threshold", 0),
+            min_count = config.get("min_count", 10),
+            min_samples = config.get("min_samples", 2),
+            script = SCRIPTS + "/run_deseq2.R",
+        log:
+            OUT + "/logs/deseq2.log"
+        benchmark:
+            OUT + "/benchmarks/deseq2.txt"
+        threads: 2
+        conda:
+            ENVS + "/ttpipe_r.yml"
+        shell:
+            """
+            Rscript {params.script} \
+                --counts {input.counts} --samples {input.samples} \
+                --design '{params.design}' --reference {params.reference} \
+                --condition-order '{params.condition_order}' \
+                --comparisons '{params.comparisons}' --names '{params.names}' \
+                --alpha {params.alpha} --lfc-threshold {params.lfc} \
+                --min-count {params.min_count} --min-samples {params.min_samples} \
+                --degs-pattern '{params.degs_pattern}' --summary {output.summary} \
+                --norm {output.norm} --vst {output.vst} --pca {output.pca} > {log} 2>&1
+            """
 
 
 def gsea_gmt(wildcards):

@@ -118,7 +118,9 @@ input %" (read pairs in the final BAM over STAR input pairs).
 
 Lists `tracks/scale_factors.tsv` (condition, mapped pairs, scale factor, source =
 `computed` or `config`) and the bigWig files with their sizes. It draws no
-genome plots; open the bigWigs in a genome browser.
+genome plots; open the bigWigs in a genome browser, or use the stranded tracks,
+metagene and antisense-fraction table of the
+[stranded signal page](analysis.qmd#stranded-signal) (`analysis/TTpipe_stranded_signal.html`).
 
 ## What is not assessed
 

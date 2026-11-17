@@ -243,6 +243,49 @@ qc_report: false    # skip the QC table and report
 `multiqc_extra` passes extra arguments to MultiQC. The MultiQC page exists only
 on processing runs.
 
+## Plot my genes of interest, lncRNAs or enhancers {#plot-my-genes}
+
+The stranded signal page (`analysis/TTpipe_stranded_signal.html`,
+[how to read it](analysis.qmd#stranded-signal)) draws the stranded bigWigs for
+the loci you choose. It is built by default; you only say where to look.
+
+Genes by name or by position:
+
+```yaml
+track_loci: ['Gapdh', 'Myc', 'ENSMUSG00000057666', 'chr1:3000000-3010000']
+```
+
+A list of lncRNAs or any gene set: put one symbol per entry in `track_loci`, or
+write a BED file with one region per line (`chrom`, `start`, `end`, optional
+`name`, `score`, `strand`; start is 0-based as in any BED file) and point to it:
+
+```yaml
+track_regions_bed: '/path/to/my_regions.bed'
+```
+
+Candidate enhancers, and their metagene profile (the strand column, if present,
+orients the regions; without it the page shows + strand and - strand RNA, not
+sense and antisense):
+
+```yaml
+track_regions_bed: '/path/to/enhancers.bed'
+metagene_bed: '/path/to/enhancers.bed'
+```
+
+Then run the workflow again; only the `stranded_signal` rule is redone. The
+page lists anything it could not find. `track_max_loci` (default 40) caps the
+number of tracks; the metagene uses every region of `metagene_bed`.
+
+Be clear about what this does. **TTpipe does not call enhancer RNAs**: it only
+shows the stranded signal where you point it, and the metagene of a BED is the
+average over your regions. Nascent enhancer transcripts are short and weak, so
+a visible signal needs enough sequencing depth, a region list you trust, and
+normally a comparison with a control region set; a BED of regions with no
+signal gives a flat line, not a negative result about enhancers in general.
+The signal is normalized by library size only (no spike-in).
+
+The page has been run only on synthetic data so far.
+
 ## Changing tool settings
 
 | Key | Passes to | Example |

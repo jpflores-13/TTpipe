@@ -138,7 +138,133 @@ def check_reference_names():
 if RUN_PROCESSING:
     check_reference_names()
 
+##### Spike-in normalization (OPTIONAL, OFF by default, EXPERIMENTAL) #####
+## With `spike_in.enabled: false` (the default) nothing below changes the workflow: the same rules, jobs, commands and
+## outputs as without this block (tests/test_spike_in.py compares the dry-run job tables). Everything here is
+## validated at parse time so that a mistake stops the run before any job starts.
+_SPIKE = config.get("spike_in") or {}
+SPIKE_ENABLED = bool(_SPIKE.get("enabled", False))
+SPIKE_SRC_FASTA = str(_SPIKE.get("fasta") or "")
+SPIKE_SRC_GTF = str(_SPIKE.get("gtf") or "")
+SPIKE_PREFIX = str(_SPIKE.get("prefix", "spike_") if _SPIKE.get("prefix", "spike_") is not None else "")
+SPIKE_METHOD = str(_SPIKE.get("size_factor_method", "total") or "total")
+SPIKE_MIN_PAIRS = _SPIKE.get("min_pairs", 10000)
+
+
+def _as_str_list(v):
+    if v is None or v == "":
+        return []
+    return [str(x) for x in v] if isinstance(v, (list, tuple)) else [str(v)]
+
+
+SPIKE_USE_CONTIGS = _as_str_list(_SPIKE.get("use_contigs", []))
+SPIKE_NORMALIZE = _as_str_list(_SPIKE.get("normalize", ["tracks", "deseq2"]))
+
+
+def _fasta_names(path):
+    """All sequence names (first word of each header) of a FASTA, plain or .gz; None if it cannot be read."""
+    import gzip
+    try:
+        op = gzip.open if str(path).endswith(".gz") else open
+        with op(path, "rt") as fh:
+            return [ln[1:].split()[0] for ln in fh if ln.startswith(">") and ln[1:].split()]
+    except OSError:
+        return None
+
+
+def check_spike_in():
+    """Parse-time checks of the spike_in block (only called when it is enabled)."""
+    def bad(msg):
+        raise ValueError("spike_in: " + msg)
+    if not RUN_PROCESSING:
+        bad("enabled needs run_processing: true (the spike-in read counts come from the BAMs of this run; "
+            "an analysis_counts matrix has none)")
+    if not SPIKE_SRC_FASTA:
+        bad("enabled is true but 'fasta' is empty: set spike_in.fasta to the spike-in sequences (FASTA, plain or .gz)")
+    if not os.path.exists(SPIKE_SRC_FASTA):
+        bad(f"fasta {SPIKE_SRC_FASTA!r} does not exist")
+    if SPIKE_SRC_GTF and not os.path.exists(SPIKE_SRC_GTF):
+        bad(f"gtf {SPIKE_SRC_GTF!r} does not exist")
+    if not SPIKE_PREFIX or not re.fullmatch(r"[A-Za-z0-9._\-]+", SPIKE_PREFIX):
+        bad(f"prefix {SPIKE_PREFIX!r} must be non-empty and contain only letters, digits, '.', '_' and '-'")
+    if SPIKE_METHOD not in ("total", "genes"):
+        bad(f"size_factor_method must be 'total' or 'genes', got {SPIKE_METHOD!r}")
+    unknown = [x for x in SPIKE_NORMALIZE if x not in ("tracks", "deseq2")]
+    if unknown:
+        bad(f"normalize may contain 'tracks' and 'deseq2' (or be empty to only count and report); got unknown {unknown}")
+    if SPIKE_METHOD == "genes" and "deseq2" in SPIKE_NORMALIZE and not SPIKE_SRC_GTF:
+        bad("size_factor_method 'genes' needs spike_in.gtf (the spike-in genes are the control genes of DESeq2)")
+    try:
+        float(SPIKE_MIN_PAIRS)
+        ok = float(SPIKE_MIN_PAIRS) >= 0
+    except (TypeError, ValueError):
+        ok = False
+    if not ok:
+        bad(f"min_pairs must be a number >= 0, got {SPIKE_MIN_PAIRS!r}")
+    for key, val in (("genome_fasta", GENOME_FASTA), ("gtf", GTF)):
+        if not val or not os.path.exists(val):
+            bad(f"enabled needs the host {key} ({val!r} is not an existing file): the combined host + spike-in "
+                "reference (and the combined GTF used for counting) is built from it")
+    names = _fasta_names(SPIKE_SRC_FASTA)
+    if names is not None:
+        if not names:
+            bad(f"no sequences found in fasta {SPIKE_SRC_FASTA!r}")
+        missing = [c for c in SPIKE_USE_CONTIGS if c not in names]
+        if missing:
+            bad(f"use_contigs {missing[:10]} are not sequence names in {SPIKE_SRC_FASTA} (names as in the FASTA, "
+                f"without the prefix; it has {len(names)}, e.g. {names[:3]})")
+    elif SPIKE_USE_CONTIGS:
+        print(f"spike_in: could not read {SPIKE_SRC_FASTA} to check use_contigs", file=sys.stderr)
+    if not BUILD_STAR_INDEX:
+        idx_names = None
+        for fname in ("chrName.txt", "chrNameLength.txt"):
+            f = os.path.join(STAR_INDEX, fname) if STAR_INDEX else ""
+            if f and os.path.exists(f):
+                with open(f) as fh:
+                    idx_names = {ln.split("\t")[0].strip() for ln in fh if ln.strip()}
+                break
+        if idx_names is not None and names:
+            lacking = [SPIKE_PREFIX + c for c in names if SPIKE_PREFIX + c not in idx_names]
+            if lacking:
+                bad(f"the STAR index {STAR_INDEX!r} does not contain the spike-in contigs (e.g. {lacking[:3]}) and "
+                    "build_star_index is false. Set build_star_index: true and a NEW star_index directory so that the "
+                    "index is built once from the combined host + spike-in reference, or point star_index at an index "
+                    "that already contains the prefixed spike-in contigs.")
+    elif STAR_INDEX and names:
+        for fname in ("chrName.txt", "chrNameLength.txt"):
+            f = os.path.join(STAR_INDEX, fname)
+            if os.path.exists(f):
+                with open(f) as fh:
+                    have = {ln.split("\t")[0].strip() for ln in fh if ln.strip()}
+                if not {SPIKE_PREFIX + c for c in names} <= have:
+                    print(f"spike_in: NOTE: {STAR_INDEX} already holds a STAR index without the spike-in contigs; "
+                          "it will be rebuilt (overwritten) from the combined reference. Use a new star_index "
+                          "directory to keep the old index.", file=sys.stderr)
+                break
+
+
+if SPIKE_ENABLED:
+    check_spike_in()
+SPIKE_TRACKS = SPIKE_ENABLED and "tracks" in SPIKE_NORMALIZE            # bigWig scale factors from the spike-in
+SPIKE_DESEQ2 = SPIKE_ENABLED and "deseq2" in SPIKE_NORMALIZE and RUN_ANALYSIS   # DESeq2 size factors from the spike-in
+
 ##### Output path templates (use with expand() or .format()) #####
+## Spike-in (only used when spike_in.enabled is true)
+SPIKE_FASTA  = OUT + "/reference/host_spike.fa"           # host FASTA + spike-in FASTA (headers prefixed)
+SPIKE_GTF    = OUT + "/reference/host_spike.gtf"          # host GTF + spike-in GTF (seqname, gene_id, transcript_id prefixed; gene lines synthesised if missing)
+SPIKE_CONTIGS = OUT + "/reference/spike_contigs.tsv"      # prefixed spike-in contig, length
+SPIKE_GENES  = OUT + "/reference/spike_genes.tsv"         # only with spike_in.gtf: gene_id, contig, start, end, strand
+SAMPLE_IDXSTATS = OUT + "/{sample}/stats/{sample}_idxstats.txt"      # samtools idxstats of the final BAM
+SPIKE_COUNTS = OUT + "/spike/spike_counts.tsv"            # sample, condition, host_pairs, spike_pairs_all, spike_pairs_used, spike_pct
+SPIKE_CONTIG_COUNTS = OUT + "/spike/spike_contig_counts.tsv"   # spike-in contig x sample read pairs
+SPIKE_SIZE_FACTORS = OUT + "/spike/size_factors.tsv"      # method total: sample, size_factor (for DESeq2)
+SPIKE_CONTROL_GENES = OUT + "/spike/control_genes.txt"    # method genes: control gene ids for DESeq2
+SPIKE_SIZE_OUT = SPIKE_SIZE_FACTORS if SPIKE_METHOD == "total" else SPIKE_CONTROL_GENES
+COUNTS_SPIKE = OUT + "/counts/counts_spike.txt"           # spike-in genes x samples (only with spike_in.gtf)
+## What the reference-dependent rules read: the plain host files, or the combined host + spike-in ones
+STAR_FASTA = SPIKE_FASTA if SPIKE_ENABLED else GENOME_FASTA
+STAR_GTF = SPIKE_GTF if SPIKE_ENABLED else GTF
+HTSEQ_GTF = SPIKE_GTF if SPIKE_ENABLED else GTF
 ## Per sample
 FASTQC_ZIP   = OUT + "/qc/fastqc/{sample}_R{mate}_fastqc.zip"
 TRIM_R       = OUT + "/{sample}/trim/{sample}_R{mate}.fastq.gz"          # temp, only if trim: true
@@ -179,6 +305,7 @@ DEGS         = DEG_DIR + "/degs_{comparison}.csv"     # full DESeq2 results tabl
 DEG_SUMMARY  = DEG_DIR + "/deg_summary.tsv"           # comparison, n_up, n_down, n_tested
 NORM_COUNTS  = DEG_DIR + "/normalized_counts.tsv"
 VST_COUNTS   = DEG_DIR + "/vst.tsv"
+DESEQ2_SIZE_FACTORS = DEG_DIR + "/deseq2_size_factors.tsv"   # only with spike-in size factors: sample, size_factor, method
 PCA_PDF      = OUT + "/analysis/figures/pca.pdf"
 GSEA_DIR     = OUT + "/analysis/gsea"
 RNK          = GSEA_DIR + "/{comparison}.rnk"         # gene_name <TAB> Wald stat, sorted descending
@@ -191,6 +318,8 @@ QC_REPORT    = OUT + "/qc/TTpipe_qc_report.html"
 MULTIQC_REPORT = OUT + "/qc/TTpipe_multiqc.html"
 ## Results explorer (static interactive HTML: volcano/MA, gene search, tables, GSEA); only if `results_explorer: true`
 RESULTS_EXPLORER = OUT + "/analysis/TTpipe_results_explorer.html"
+## Stranded signal page (locus tracks, stranded metagene profiles, antisense-fraction table); only if `stranded_plots: true`
+STRANDED_SIGNAL = OUT + "/analysis/TTpipe_stranded_signal.html"
 
 
 ##### Targets #####
@@ -205,17 +334,39 @@ def processing_targets():
         t += expand(SAMPLE_BIGWIG, sample=SAMPLES)
         t += expand(SAMPLE_BIGWIG_STRAND, sample=SAMPLES, strand=STRANDS)
     t += [COUNTS_FORWARD, COUNTS_REVERSE, COUNTS_DESEQ2, GENE_INFO, SCALE_FACTORS]
+    if SPIKE_ENABLED:
+        t += [SPIKE_COUNTS, SPIKE_CONTIG_COUNTS, SPIKE_CONTIGS]
+        if SPIKE_SRC_GTF:
+            t.append(COUNTS_SPIKE)
     return t
 
 
 def analysis_targets():
     t = [SAMPLES_DESEQ2, GENE_INFO, DEG_SUMMARY, NORM_COUNTS, VST_COUNTS, PCA_PDF, SANKEY_PDF, SANKEY_TABLE]
     t += expand(DEGS, comparison=COMPARISON_NAMES)
+    if SPIKE_DESEQ2:
+        t.append(DESEQ2_SIZE_FACTORS)
     if GSEA_COLLECTIONS:
         t += expand(GSEA_RESULT, collection=list(GSEA_COLLECTIONS), comparison=COMPARISON_NAMES)
     if config.get("results_explorer", True):
         t.append(RESULTS_EXPLORER)
     return t
+
+
+def stranded_targets():
+    """The stranded signal page, when `stranded_plots` is true (default) AND the stranded bigWigs are made in this run
+    or already exist (an analysis-only run on an output folder that was processed earlier). Without bigWigs the page is
+    skipped quietly: an analysis-only run on a count matrix has nothing to draw."""
+    if not config.get("stranded_plots", True):
+        return []
+    if RUN_PROCESSING:
+        return [STRANDED_SIGNAL]
+    if RUN_ANALYSIS:
+        needed = (expand(BIGWIG_STRAND, condition=CONDITIONS, strand=STRANDS)
+                  + [SCALE_FACTORS, GENE_INFO, COUNTS_FORWARD, COUNTS_REVERSE])
+        if all(os.path.exists(f) for f in needed):
+            return [STRANDED_SIGNAL]
+    return []
 
 
 def report_targets():
@@ -228,6 +379,7 @@ def all_targets():
         t += processing_targets()
     if RUN_ANALYSIS:
         t += analysis_targets()
+    t += stranded_targets()
     if RUN_REPORT:
         t += report_targets()
     if RUN_PROCESSING and config.get("multiqc", False):

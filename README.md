@@ -167,6 +167,7 @@ flowchart LR
     fgsea[fgsea]
     rnk[rnk]
     results_explorer[results_explorer]
+    stranded_signal[stranded_signal]
   end
   subgraph Reporting["Reporting"]
     qc_report[qc_report]
@@ -174,13 +175,16 @@ flowchart LR
     multiqc[multiqc]
   end
   bigwig --> qc_report
+  bigwig --> stranded_signal
   bigwig_sample --> qc_report
   count_matrix --> deseq2
   count_matrix --> qc_summary
+  count_matrix --> stranded_signal
   deseq2 --> qc_report
   deseq2 --> results_explorer
   deseq2 --> rnk
   deseq2 --> sankey
+  deseq2 --> stranded_signal
   fastp --> multiqc
   fastp --> star_align
   fastqc --> multiqc
@@ -189,6 +193,7 @@ flowchart LR
   gene_info --> qc_summary
   gene_info --> results_explorer
   gene_info --> rnk
+  gene_info --> stranded_signal
   htseq_count --> count_matrix
   mapq_filter --> mark_duplicates
   mapq_filter --> qc_summary
@@ -205,6 +210,7 @@ flowchart LR
   sample_table --> results_explorer
   scale_factors --> bigwig
   scale_factors --> qc_report
+  scale_factors --> stranded_signal
   split_strands --> bigwig_sample
   split_strands --> htseq_count
   split_strands --> merge_bams
@@ -474,6 +480,9 @@ Three keys choose what runs (at least one must be true):
 
 `results_explorer` (default `true`) adds the interactive results page; it
 needs `run_analysis` (see [The results explorer](#the-results-explorer)).
+`stranded_plots` (default `true`) adds the stranded signal page when the
+bigWigs are made in the run or already exist (see
+[Stranded signal plots](#stranded-signal-plots)).
 
 `run_processing: false` with `analysis_counts: '/path/to/counts.txt'` runs
 the analysis on a count matrix you already have. `multiqc: true` (default)
@@ -536,6 +545,7 @@ Finished steps are kept; only the failed and missing ones are redone.
 | `fgsea` | 1 per collection and comparison | Preranked GSEA |
 | `sankey` | 1 | Up / down / unchanged categories across comparisons |
 | `results_explorer` | 1 (`results_explorer: true`) | One interactive HTML page of the DESeq2 and GSEA results |
+| `stranded_signal` | 1 (`stranded_plots: true`) | One interactive HTML page: stranded locus tracks, metagene profiles, antisense-fraction table |
 | `qc_summary` | 1 | Per-sample QC table |
 | `qc_report` | 1 | The static HTML report |
 | `multiqc` | 1 (`multiqc: true`) | Standard MultiQC page |
@@ -624,6 +634,8 @@ output/
 │   │              normalized_counts.tsv, vst.tsv, sankey_categories.tsv
 │   ├── gsea/      {comparison}.rnk, {collection}_{comparison}.tsv
 │   ├── TTpipe_results_explorer.html    # interactive results page (open in a browser)
+│   ├── TTpipe_stranded_signal.html     # stranded tracks, metagene, antisense table (open in a browser)
+│   ├── stranded_signal/                # static figures, only if track_static_formats is set
 │   └── figures/   pca.pdf, sankey.pdf
 ├── reference/star_index/               # only if build_star_index is true and star_index is empty
 ├── logs/   benchmarks/                 # logs for the jobs that are not per sample
@@ -699,6 +711,51 @@ of MB; the job log prints the size and warns above 40 MB.
 
 ---
 
+## Stranded signal plots
+
+`output/analysis/TTpipe_stranded_signal.html` is written by
+`scripts/stranded_signal.py` when `stranded_plots: true` (the default). It is
+one static file like the explorer (data embedded, plotting library inlined,
+works from `file://`). It draws the stranded bigWigs of every condition:
+
+- **Locus tracks**: one panel per condition, the RNA made from the + strand
+  above the axis and the RNA made from the - strand mirrored below it (both
+  bigWigs hold positive numbers), a shared x axis, one y scale shared by all
+  conditions (a "free y" box scales each panel on its own) and gene models
+  underneath. A dropdown and a search box choose the locus.
+- **Metagene**: sense and antisense signal relative to gene orientation, TSS-centred
+  and gene-body-scaled, per `gene_type` group (default protein_coding and
+  lncRNA, expressed genes only), mean or median.
+- **Strand table**: antisense fraction per gene and condition from the strand-split
+  counts, sortable, filterable, with a CSV download.
+
+Loci come from `track_loci` (symbols, gene_ids, `chr:start-end`), the top
+`track_top_degs` genes of each DESeq2 contrast, and an optional BED
+(`track_regions_bed`); entries that cannot be found are listed on the page and
+in the log, never silently dropped. Values are the bigWig values as written:
+scaled by the library-size factors of `tracks/scale_factors.tsv` (spike-in
+normalization is not implemented). To plot other genes, add them to
+`track_loci` and run again: only this rule is redone.
+
+```yaml
+track_loci: ['Gapdh', 'ENSMUSG00000057666', 'chr1:3000000-3010000']
+track_top_degs: 10             # 0 = off
+track_regions_bed: ''          # optional BED of enhancers, lncRNAs, ...
+track_flank: 5000
+track_bin_size: 100
+metagene_groups: ['protein_coding', 'lncRNA']
+metagene_bed: ''               # optional BED to profile, centre-aligned
+track_static_formats: []       # ['svg', 'pdf', 'png'] for publication-style figures
+```
+
+The page is skipped (not an error) in analysis-only runs that have no
+bigWigs. TTpipe does not call enhancer RNAs; a BED file only says where to
+look. The page has been exercised only on synthetic data (including a
+headless Chrome run of its controls) until it is run on real pipeline output;
+see [Analysis](docs/analysis.qmd#stranded-signal).
+
+---
+
 ## Pipeline files
 
 | File | Purpose |
@@ -716,11 +773,13 @@ of MB; the job log prints the size and warns above 40 MB.
 | `workflows/rules/analysis.smk` | DESeq2, ranked lists, fgsea, Sankey |
 | `workflows/rules/report.smk` | QC table and HTML report |
 | `workflows/rules/explorer.smk` | Interactive results explorer |
+| `workflows/rules/stranded.smk` | Stranded signal page |
 | `workflows/rules/multiqc.smk` | Optional MultiQC page |
 | `scripts/gene_info.py`, `make_count_matrix.py`, `scale_factors.py` | Processing helpers |
 | `scripts/run_deseq2.R`, `make_rnk.R`, `run_fgsea.R`, `make_sankey.R`, `tt_analysis_utils.R` | Analysis scripts |
 | `scripts/qc_summary.py`, `qc_report.py` | QC table and report |
 | `scripts/results_explorer.py` | Interactive results page |
+| `scripts/stranded_signal.py` | Stranded signal page (tracks, metagene, antisense table) |
 | `scripts/make_dag.py` | Regenerates the rule-graph diagrams |
 | `envs/*.yml` | Conda environments used by the rules |
 | `tests/` | pytest, placeholder fixtures for dry runs (used by CI) |

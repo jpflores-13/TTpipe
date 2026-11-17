@@ -108,3 +108,42 @@ rank_by_symbol <- function(degs, gene_info) {
   rownames(r) <- NULL
   r
 }
+
+## ---- Spike-in size factors (optional spike-in module, EXPERIMENTAL; used only when spike_in.enabled is true) ----
+## Base R only (no DESeq2), so these are unit-tested without it.
+
+## Geometric mean of positive numbers; NA, zero or negative values are an error (the factor would be undefined).
+geometric_mean <- function(x) {
+  if (!length(x)) stop("geometric mean of an empty vector", call. = FALSE)
+  if (anyNA(x) || any(x <= 0)) stop("geometric mean needs values > 0", call. = FALSE)
+  exp(mean(log(x)))
+}
+
+## Size factors from spike-in read pairs ('total' method): pairs / geometric_mean(pairs), names kept.
+total_size_factors <- function(pairs) {
+  if (any(is.na(pairs) | pairs <= 0))
+    stop("zero or missing spike-in read pairs for: ", paste(names(pairs)[is.na(pairs) | pairs <= 0], collapse = ", "), call. = FALSE)
+  pairs / geometric_mean(pairs)
+}
+
+## Size factors for `sample_names` (the order of the DESeq2 object), matched BY NAME to the file's samples; never by
+## position. Missing samples and non-positive / non-finite factors are errors; samples only in the file are ignored.
+match_size_factors <- function(file_samples, file_values, sample_names) {
+  if (anyDuplicated(file_samples)) stop("duplicated sample names in the size-factor file: ",
+                                        paste(unique(file_samples[duplicated(file_samples)]), collapse = ", "), call. = FALSE)
+  missing <- setdiff(sample_names, file_samples)
+  if (length(missing)) stop("no spike-in size factor for sample(s): ", paste(missing, collapse = ", "), call. = FALSE)
+  v <- as.numeric(file_values[match(sample_names, file_samples)])
+  if (anyNA(v) || any(!is.finite(v)) || any(v <= 0)) stop("spike-in size factors must be finite and > 0", call. = FALSE)
+  names(v) <- sample_names
+  v
+}
+
+## Row indices of the control genes among `gene_ids`; every control gene must be a row, and at least one is needed.
+control_gene_index <- function(gene_ids, control_ids) {
+  if (!length(control_ids)) stop("no spike-in control genes given", call. = FALSE)
+  miss <- setdiff(control_ids, gene_ids)
+  if (length(miss)) stop(length(miss), " spike-in control gene(s) are not rows of the count matrix, e.g. ",
+                         paste(head(miss, 3), collapse = ", "), call. = FALSE)
+  which(gene_ids %in% control_ids)
+}

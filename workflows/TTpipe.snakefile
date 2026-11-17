@@ -4,6 +4,7 @@
 ##   -> strand-split BAMs -> replicate-merged BAMs -> bigWig tracks; HTSeq gene counts -> count matrix.
 ## Analysis (run_analysis): DESeq2 per comparison -> fgsea (GSEA preranked) -> Sankey / PCA.
 ## Results explorer (results_explorer): one self-contained interactive HTML of the DESeq2 / GSEA results.
+## Stranded signal (stranded_signal): one self-contained HTML of stranded locus tracks, metagene profiles and an antisense-fraction table.
 ## Report (qc_report): one self-contained HTML (sample QC, strandedness, replicate correlation, ...).
 ## The switches are in config/TTpipeConfig.yaml. Rules are in workflows/rules/.
 
@@ -49,7 +50,10 @@ rule sample_table:
                 fh.write(f"{s}\t{SAMPLE_TABLE.loc[s, 'Condition']}\t{SAMPLE_TABLE.loc[s, 'Replicate']}\n")
 
 include: "rules/processing.smk"
+if SPIKE_ENABLED:
+    include: "rules/spike.smk"
 include: "rules/analysis.smk"
 include: "rules/explorer.smk"
+include: "rules/stranded.smk"
 include: "rules/report.smk"
 include: "rules/multiqc.smk"

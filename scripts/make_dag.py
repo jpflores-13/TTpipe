@@ -35,7 +35,8 @@ STAGES = [
     ("Processing", ["fastqc", "fastp", "star_index", "star_align", "mapq_filter", "mark_duplicates",
                     "split_strands", "merge_bams", "scale_factors", "bigwig", "bigwig_sample",
                     "gene_info", "htseq_count", "count_matrix"]),
-    ("Analysis", ["sample_table", "deseq2", "rnk", "fgsea", "sankey", "results_explorer"]),
+    ("Analysis", ["sample_table", "deseq2", "rnk", "fgsea", "sankey", "results_explorer",
+                 "stranded_signal"]),
     ("Reporting", ["qc_summary", "qc_report", "multiqc"]),
 ]
 

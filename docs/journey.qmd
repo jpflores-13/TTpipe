@@ -65,7 +65,7 @@ flowchart TD
 | 5. Run | `sbatch TTpipe.sh` or `bash TTpipe.sh` | [Running](running.qmd) | `output/` |
 | 6. QC | Open `output/qc/TTpipe_qc_report.html` | [Reading the QC report](qc.qmd) | Pass / warn / fail per sample |
 | 7. Analysis | Look at the DESeq2 tables, GSEA and Sankey | [Analysis](analysis.qmd) | `output/analysis/` |
-| 8. Explore | Open the results explorer; load the bigWigs in a genome browser | [Analysis](analysis.qmd#results-explorer) | Interactive volcano and MA plots |
+| 8. Explore | Open the results explorer and the stranded signal page; load the bigWigs in a genome browser | [Analysis](analysis.qmd#results-explorer), [stranded signal](analysis.qmd#stranded-signal) | Interactive volcano and MA plots; stranded tracks, metagene, antisense fraction |
 | 9. Keep and share | Keep the config, samplesheet and `profiles/` choice with the results | [Running](running.qmd) | A reproducible record |
 
 ### When the QC report warns

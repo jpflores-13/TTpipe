@@ -219,14 +219,148 @@ a laptop with no network, and can be emailed. Nothing is computed on a server.
   not in the file.
 - Biotype filtering uses the `gene_type` of the annotation (GENCODE). "lncRNA"
   is whatever the GTF calls lncRNA; nothing is detected de novo.
-- There is no genome browser or track panel, and no eRNA calling, in this
-  version. Tracks and custom feature sets are future work.
+- There is no genome browser or track panel on this page (stranded tracks are
+  on the separate [stranded signal page](#stranded-signal)), and no eRNA calling.
 - Size: the page holds the full result tables for every contrast, so many
   contrasts and large GSEA collections make it large. The job log
   (`logs/results_explorer.log`) prints the size and warns above 40 MB.
 - The page has been exercised only on synthetic data (data preparation tests
   plus its controls driven in headless Chrome). It has not yet been run on real
   pipeline output.
+
+## Stranded signal {#stranded-signal}
+
+`analysis/TTpipe_stranded_signal.html` (written when `stranded_plots: true`, the
+default) draws the stranded bigWigs of every condition. Like the results
+explorer it is one static file: the binned data are embedded as JSON and the
+plotting library is inlined, so it opens by double-clicking, with no network,
+and can be emailed. **It has only been exercised on synthetic data** (small
+invented genomes, bigWigs and counts, with its controls driven in headless
+Chrome) until it is run on real pipeline output.
+
+**What the signal is.** The values are the bigWig values as `bamCoverage` wrote
+them, already multiplied by the library-size scale factors in
+`tracks/scale_factors.tsv` (largest condition's mapped pairs divided by this
+condition's). Nothing is rescaled on the page, and the page states this above
+the plots. Spike-in normalization is not implemented, so a global change in
+nascent RNA output between conditions is not corrected for beyond library size.
+Values are averaged in bins of `track_bin_size` bases (uncovered bases count as
+zero). A very wide window gets a larger bin, in whole multiples, so that a
+panel never needs more than 4000 bins; the page says so for that locus.
+
+**How loci are chosen.** Everything below is combined, de-duplicated (a gene
+asked for twice, or both configured and a top DEG, is drawn once with all its
+sources listed) and capped at `track_max_loci` (default 40; the order is
+`track_loci`, then top DEGs, then the BED).
+
+- `track_loci`: a list of gene symbols (case-insensitive, looked up in
+  `counts/gene_info.tsv`; a symbol shared by several genes shows all of them and
+  the log says so), Ensembl gene ids (with or without the `.version`), or
+  coordinates `chr:start-end` (1-based, inclusive, like a genome browser).
+- `track_top_degs` (default 10): the N genes with the smallest non-NA padj in
+  each contrast's DESeq2 table. Skipped silently when the analysis does not run
+  in the workflow.
+- `track_regions_bed`: a BED file of regions (chrom, start, end, optional name
+  and strand). The name labels the track. Use it for enhancers, candidate
+  eRNA regions or a lncRNA list of your own.
+
+The window is the gene (or region) plus `track_flank` bases (default 5000) on both
+sides. Entries that cannot be resolved (a misspelt symbol, a chromosome that is
+not in the bigWigs, a missing BED file) appear in a "Not found / not drawn" box
+on the page and in `logs/stranded_signal.log`. They never stop the run.
+
+**Adding your own genes.** Put them in `track_loci` in the config, for example
+`track_loci: ['Gapdh', 'Myc', 'chr1:3000000-3010000']`, and run the workflow
+again. Only `stranded_signal` is redone (its parameters changed; alignment,
+counts and DESeq2 are not touched). To redo it without a config change, add
+`--forcerun stranded_signal` to the launcher command. The rule needs the
+bigWigs, so it works in a processing-only run (no DESeq2 tables, so no top
+DEGs: only your loci and the metagene) and in an analysis-only run on an output
+folder that already holds the bigWigs. In an analysis-only run with no bigWigs
+the page is skipped, not failed.
+
+**Reading the locus tracks.** There is one panel per condition, in
+`condition_order`, on a shared x axis (zoom in one panel, all follow).
+
+- Above the axis, blue: **+ strand RNA**, RNA made from the + genomic strand
+  (the `forward` bigWig). Below the axis, orange: **- strand RNA**, from the -
+  strand (the `reverse` bigWig). The two bigWigs both hold positive numbers; the
+  page draws the - strand mirrored so the two can be seen at once. Tick labels
+  and hover text give the real (positive) value.
+- A gene on the + strand has its sense signal above the axis, a gene on the -
+  strand below it. "Antisense" is therefore the strand opposite to the
+  gene model, not "below the axis".
+- All panels use the same y scale by default, so heights can be compared across
+  conditions. Tick **free y** to scale each panel on its own. Read a
+  free-y panel for shape only.
+- Gene models are drawn under the tracks from the GTF: for each gene the union of
+  its annotated exons (thick boxes), introns as a thin line, arrowheads for the
+  strand. This is a collapsed model, not every transcript. The grey band marks
+  the gene extent. Up to 10 rows are drawn; the page says how many genes are not.
+- Use the dropdown (or the arrow buttons) to change locus, and the search box to
+  narrow the list by name, gene id, coordinates or source.
+
+**Reading the metagene.** For each group of genes (`metagene_groups`, matched on
+the annotation's `gene_type`; default protein_coding and lncRNA) the page shows
+the mean (or, with the toggle, the median) signal per bin over the genes of the
+group, one colour per condition. The signal is oriented by the gene: for a + gene
+sense is the forward bigWig and antisense the reverse, for a - gene they swap and
+the coordinates are flipped, so 5' is always on the left.
+
+- Solid line above zero: sense signal. Dashed line below zero: antisense signal
+  (mirrored). A strong sense peak right after the TSS and little antisense
+  fits a clean library; antisense signal upstream of the TSS is the usual
+  signature of divergent (promoter-associated) transcription, but it is also
+  what a strandedness mix-up or overlapping genes on the other strand would
+  give, so check the QC report's strandedness panel too.
+- Two views: **TSS-centred** (`metagene_flank` bases each side, 50 bp bins) and
+  **gene body scaled** (the body stretched to 100 bins, flanks of `metagene_flank`
+  in 100 bp bins). The body view leaves out genes shorter than
+  `metagene_min_length`.
+- Only expressed genes are used: counts of at least `min_count` in at least
+  `min_samples` samples of the count matrix. Groups with fewer than 20 genes are
+  skipped, with a note on the page and in the log, which also says how many genes
+  each view used. Genes whose window leaves the chromosome are dropped.
+- The mean is dominated by highly expressed genes; the median shows the typical
+  gene. Neither says anything about individual genes.
+- With `metagene_bed` set, the regions are centre-aligned and profiled over
+  +/- `metagene_flank`. If every region has a strand (BED column 6) they are
+  oriented like genes; otherwise the lines are + strand RNA (solid) and - strand
+  RNA (dashed), not sense and antisense.
+
+**The strand table.** For each gene and condition,
+antisense fraction = antisense reads / (sense + antisense reads), from the
+strand-split HTSeq counts (`counts_forward.txt`, `counts_reverse.txt`; the whole
+gene including introns is counted, as for DESeq2), summed over the samples of the
+condition. Sense is the forward count for a + gene and the reverse count for a -
+gene. Only genes with at least `strand_table_min_reads` reads in total (default
+50) are listed, and the 5000 with the most reads are embedded. Click a header to
+sort, use the filters, and download the shown rows as CSV (the CSV always holds
+every matching row). Hover a cell for the counts behind it. NA means no reads in
+that condition. A fraction near 0 means nearly all reads sit on the gene's own
+strand; higher values can come from real antisense transcription, from an
+overlapping gene on the other strand (the HTSeq count is by strand only, so a
+read that overlaps both genes' strands counts for both), or from a library
+strandedness problem.
+
+**Static figures.** `track_static_formats: ['svg', 'pdf']` (any of `svg`, `pdf`,
+`png`) also writes one publication-style figure per locus to
+`analysis/stranded_signal/`, with the same layout (mirrored strands, shared y
+scale, gene models). It needs matplotlib, which is in the page's conda
+environment; if it is not importable the job stops with a clear message.
+
+**Limits.**
+
+- TTpipe does **not** call enhancer RNAs, or any other transcripts. The BED
+  options only choose where to look. An eRNA signal is weak and needs enough
+  sequencing depth to stand above background; whether a region is an enhancer
+  comes from your annotation, not from this page.
+- Normalization is library size only (see above); there is no spike-in.
+- Gene models are collapsed unions of exons.
+- The embedded data are binned arrays, not read-level data; the page is not a
+  genome browser (no free zoom below the bin size, no separate transcripts).
+- Replicates are merged in the bigWigs, so the page shows no replicate spread.
+- Exercised on synthetic data only so far.
 
 ## Deliberate changes in the analysis
 
