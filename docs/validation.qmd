@@ -93,12 +93,14 @@ reported, for 2 h, 6 h and 24 h respectively: Hallmark 15, 9 and 11 of 50 sets; 
 that passed a threshold, not an interpretation, and fgsea was never compared with the
 Java GSEA tool.
 
-**Results explorer.** The explorer was built from the real tables (13,419 genes, three
-contrasts, GSEA and normalized counts; 11.4 MB) and its 24 scripted interaction
-checks passed in headless Chrome. Its up/down counts for the 2 h contrast (6 up,
-43 down) match the pipeline's own `deg_summary.tsv`. The page was produced by running
-`scripts/results_explorer.py` directly on tables copied from the cluster, **not** by
-the `results_explorer` rule under conda on the cluster, which has not yet been run.
+**Results explorer.** The explorer rule ran as a real Snakemake job on the cluster, in
+its conda environment, and wrote the page from the real tables (13,419 genes, three
+contrasts, GSEA and normalized counts; 11.4 MB). The scripted interaction checks built
+into the page (contrast and plot switching, live cut-offs, biotype filter, gene search,
+count plot, table sorting and filtering, CSV text, GSEA tab) all passed in headless
+Chrome, with zero failures, on both a locally built copy and the cluster-built file.
+Its up/down counts for the 2 h contrast (6 up, 43 down) match the pipeline's own
+`deg_summary.tsv`.
 
 **Measured resource use** (from Snakemake benchmark files in the first round):
 STAR alignment used about 25.7 GB of memory (depends on the genome, not the number
@@ -110,8 +112,8 @@ starting values.
 ## What has not been run
 
 - **Full-depth data.** The real samples have roughly 30 to 48 million pairs; none were run.
-- **The `results_explorer` rule on a cluster** (see above), and the explorer in browsers other than Chrome,
-  with real mouse hover or an actual CSV download.
+- **The explorer in browsers other than Chrome**, with real mouse hover, or an actual CSV
+  file download (the CSV text is generated and checked, but the download itself was not triggered).
 - **Optional switches** on real data: `trim: true` (fastp), `strandedness: forward`,
   `count_strand: sense`, `sample_tracks: true`, `analysis_counts`.
 - **Other organisms.** Only mouse (mm10, GENCODE vM25) was run; human is expected to
