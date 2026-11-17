@@ -47,7 +47,7 @@ For a samplesheet of *S* samples in *C* conditions with the defaults, the table
 has: `fastqc` 2 x *S*; `star_align`, `mapq_filter`, `mark_duplicates` *S* each;
 `split_strands` and `htseq_count` 2 x *S* each; `merge_bams` 3 x *C*; `bigwig`
 3 x *C*; one each of `scale_factors`, `gene_info`, `count_matrix`,
-`sample_table`, `deseq2`, `sankey`, `qc_summary`, `qc_report`, `multiqc`; and
+`sample_table`, `deseq2`, `sankey`, `results_explorer`, `qc_summary`, `qc_report`, `multiqc`; and
 `rnk` per comparison (and `fgsea` per collection and comparison) when
 `gsea_collections` is set. (`rnk` and `fgsea` appear only with GSEA
 collections; `fastp`, `bigwig_sample` and `star_index` only when their switch
@@ -62,7 +62,7 @@ is on.)
 | Filter | `mapq_filter`, `mark_duplicates` | MAPQ >= `min_mapq`; Picard removes duplicates |
 | Strand and tracks | `split_strands`, `merge_bams`, `scale_factors`, `bigwig` | Forward and reverse BAMs; replicates merged for tracks |
 | Counts | `gene_info`, `htseq_count`, `count_matrix` | Whole-gene counts per strand, then matrices |
-| Statistics | `sample_table`, `deseq2`, `rnk`, `fgsea`, `sankey` | One DESeq2 job for all comparisons |
+| Statistics | `sample_table`, `deseq2`, `rnk`, `fgsea`, `sankey`, `results_explorer` | One DESeq2 job for all comparisons |
 | QC | `qc_summary`, `qc_report`, `multiqc` | Read the processing outputs |
 
 [CODE_GUIDE.md](https://github.com/jpflores-13/TTpipe/blob/main/CODE_GUIDE.md)
@@ -117,6 +117,15 @@ to a rule's parameters, input and code. So changing a config value that a rule
 uses (for example `min_mapq` or `strandedness`) reruns that rule and what
 depends on it, and changing nothing reruns nothing. Always look at the dry run
 first: it shows what will be redone.
+
+Snakemake also reruns a rule when the **conda environment file it uses
+changes**, and it compares the whole file, so even editing a comment in
+`envs/*.yml` triggers reruns of every rule that uses that environment (seen on
+a real run: a comment-only edit made the dry run list the alignment and FastQC
+jobs again). The dry run's "Reasons" section says "software environment
+definition has changed". If that is not what you want, add
+`--rerun-triggers mtime params input code` to the launcher command, which
+drops the environment trigger.
 
 ## Running only part of the workflow
 

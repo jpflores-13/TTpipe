@@ -6,7 +6,7 @@ latency-wait: 500
 software-deployment-method: conda
 
 default-resources:
-  slurm_account: pjt5_1           # <- your association
+  slurm_account: <your-slurm-account>   # REQUIRED: replace with your SLURM account/association (`sacctmgr show assoc user=$USER`)
   slurm_partition: batch
   runtime: 4320
   mem_mb: 16000
@@ -37,6 +37,7 @@ set-threads:
   rnk: 1
   fgsea: 2
   sankey: 1
+  results_explorer: 1
   qc_summary: 1
   qc_report: 2
   multiqc: 1
@@ -96,6 +97,9 @@ set-resources:
     runtime: 120
     mem_mb: 8000
   sankey:
+    runtime: 30
+    mem_mb: 4000
+  results_explorer:
     runtime: 30
     mem_mb: 4000
   qc_summary:

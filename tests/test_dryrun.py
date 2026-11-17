@@ -75,7 +75,9 @@ def test_analysis_only_has_no_alignment():
     j = jobs(r)
     assert "star_align" not in j and "fastqc" not in j and "htseq_count" not in j
     assert j["deseq2"] == 1 and j["qc_summary"] == 1 and j["qc_report"] == 1
-    assert set(j) - {"multiqc"} == {"all", "deseq2", "gene_info", "qc_summary", "qc_report", "sample_table", "sankey", "total"}
+    assert j["results_explorer"] == 1
+    assert set(j) - {"multiqc"} == {"all", "deseq2", "gene_info", "qc_summary", "qc_report", "results_explorer",
+                                    "sample_table", "sankey", "total"}
 
 
 @needs_snakemake
@@ -104,6 +106,33 @@ def test_gsea_collections_add_fgsea():
 def test_qc_report_switch_removes_report_jobs():
     base, j = jobs(dry_run(FULL)), jobs(dry_run(FULL, qc_report="False"))
     assert "qc_report" not in j and "qc_summary" not in j and j["total"] == base["total"] - 2
+
+
+@needs_snakemake
+def test_results_explorer_switch_adds_or_removes_one_job():
+    on, off = jobs(dry_run(FULL, results_explorer="True")), jobs(dry_run(FULL, results_explorer="False"))
+    assert on["results_explorer"] == 1 and "results_explorer" not in off
+    assert on["total"] == off["total"] + 1
+    assert jobs(dry_run(FULL)) == on               # shipped config: on by default
+    r = dry_run(FULL)
+    assert "output_ci/analysis/TTpipe_results_explorer.html" in r.stdout
+
+
+@needs_snakemake
+def test_results_explorer_in_analysis_only_mode_and_with_gsea():
+    on, off = jobs(dry_run(ANA, results_explorer="True")), jobs(dry_run(ANA, results_explorer="False"))
+    assert on["results_explorer"] == 1 and "results_explorer" not in off and on["total"] == off["total"] + 1
+    r = dry_run(ANA, gsea_collections="{H: tests/dryrun/placeholder.gmt}")
+    assert r.returncode == 0, r.stderr
+    j = jobs(r)
+    assert j["results_explorer"] == 1 and j["fgsea"] == 1         # still exactly one explorer job, after fgsea
+    block = r.stdout.split("rule results_explorer:")[1].split("\n\n")[0]
+    assert "gsea/H_2H_vs_DMSO.tsv" in block and "degs_2H_vs_DMSO.csv" in block and "normalized_counts.tsv" in block
+
+
+@needs_snakemake
+def test_results_explorer_not_in_processing_only_mode():
+    assert "results_explorer" not in jobs(dry_run(PROC))
 
 
 @needs_snakemake

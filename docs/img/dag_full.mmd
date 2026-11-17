@@ -22,6 +22,7 @@ flowchart LR
     sankey[sankey]
     fgsea[fgsea]
     rnk[rnk]
+    results_explorer[results_explorer]
   end
   subgraph Reporting["Reporting"]
     qc_report[qc_report]
@@ -33,13 +34,16 @@ flowchart LR
   count_matrix --> deseq2
   count_matrix --> qc_summary
   deseq2 --> qc_report
+  deseq2 --> results_explorer
   deseq2 --> rnk
   deseq2 --> sankey
   fastp --> multiqc
   fastp --> star_align
   fastqc --> multiqc
+  fgsea --> results_explorer
   gene_info --> count_matrix
   gene_info --> qc_summary
+  gene_info --> results_explorer
   gene_info --> rnk
   htseq_count --> count_matrix
   mapq_filter --> mark_duplicates
@@ -54,6 +58,7 @@ flowchart LR
   qc_summary --> qc_report
   rnk --> fgsea
   sample_table --> deseq2
+  sample_table --> results_explorer
   scale_factors --> bigwig
   scale_factors --> qc_report
   split_strands --> bigwig_sample

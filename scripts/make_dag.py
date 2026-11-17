@@ -35,7 +35,7 @@ STAGES = [
     ("Processing", ["fastqc", "fastp", "star_index", "star_align", "mapq_filter", "mark_duplicates",
                     "split_strands", "merge_bams", "scale_factors", "bigwig", "bigwig_sample",
                     "gene_info", "htseq_count", "count_matrix"]),
-    ("Analysis", ["sample_table", "deseq2", "rnk", "fgsea", "sankey"]),
+    ("Analysis", ["sample_table", "deseq2", "rnk", "fgsea", "sankey", "results_explorer"]),
     ("Reporting", ["qc_summary", "qc_report", "multiqc"]),
 ]
 
@@ -110,6 +110,27 @@ def text(nodes, edges, title):
     return "\n".join(lines)
 
 
+STAGE_COLORS = {"Processing": "#e8f0fe", "Analysis": "#e6f4ea", "Reporting": "#fef7e0", "Other": "#f1f3f4"}
+
+
+def clean_dot(nodes, edges, title):
+    """Graphviz source for the same cleaned graph as the Mermaid output: no `all`, rules grouped by stage."""
+    out = ['digraph TTpipe {', f'  label="{title}"; labelloc=t; fontname="Helvetica"; fontsize=14;',
+           '  rankdir=TB; compound=true; nodesep=0.3; ranksep=0.5;',
+           '  node [shape=box, style="rounded,filled", fillcolor=white, fontname="Helvetica", fontsize=11];',
+           '  edge [color="#80868b", arrowsize=0.7];']
+    for i, stage in enumerate([s for s, _ in STAGES] + ["Other"]):
+        members = [n for n in nodes if stage_of(n) == stage]
+        if members:
+            out.append(f'  subgraph cluster_{i} {{ label="{stage}"; style="rounded,filled"; '
+                       f'fillcolor="{STAGE_COLORS[stage]}"; color="#dadce0"; fontname="Helvetica";')
+            out += [f'    "{n}";' for n in members]
+            out.append("  }")
+    out += [f'  "{a}" -> "{b}";' for a, b in edges]
+    out.append("}")
+    return "\n".join(out) + "\n"
+
+
 def svg(dot, path):
     if shutil.which("dot") is None:
         return False
@@ -148,10 +169,13 @@ def sync_embeds(mmd, check):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("modes", nargs="*", choices=list(MODES), help="default: all modes")
+    ap.add_argument("modes", nargs="*", metavar="MODE", help="one or more of: " + ", ".join(MODES) + " (default: all)")
     ap.add_argument("--stdin", action="store_true", help="read a dot rulegraph from stdin (needs exactly one mode)")
     ap.add_argument("--check", action="store_true", help="do not write; exit 1 if committed files differ")
     args = ap.parse_args()
+    bad = [m for m in args.modes if m not in MODES]   # not argparse `choices=`: on Python 3.11 an empty default fails it
+    if bad:
+        ap.error(f"unknown mode(s) {bad}; choose from {list(MODES)}")
     modes = args.modes or list(MODES)
     if args.stdin and len(modes) != 1:
         ap.error("--stdin needs exactly one mode")
@@ -168,7 +192,8 @@ def main():
             else:
                 path.write_text(content)
                 print(f"wrote {path.relative_to(ROOT)}")
-        if not args.check and svg(dot, IMG / f"dag_{mode}.svg"):
+        nodes, edges = parse_dot(dot)
+        if not args.check and svg(clean_dot(nodes, edges, TITLES[mode]), IMG / f"dag_{mode}.svg"):
             print(f"wrote docs/img/dag_{mode}.svg")
     if stale:
         sys.exit("out of date (run scripts/make_dag.py): " + ", ".join(stale))

@@ -14,6 +14,11 @@ QC_COUNTS = COUNTS_DESEQ2 if RUN_PROCESSING else COUNTS_MATRIX
 
 
 def qc_summary_inputs(wildcards):
+    # the samplesheet is listed so that editing it reruns the summary (it is read via --samplesheet)
+    return [config["samplesheet"]] + _qc_summary_data_inputs(wildcards)
+
+
+def _qc_summary_data_inputs(wildcards):
     if RUN_PROCESSING:
         return (expand(STAR_LOG, sample=SAMPLES) + expand(STAR_GENECNT, sample=SAMPLES)
                 + expand(MAPQ_STATS, sample=SAMPLES) + expand(DEDUP_METRICS, sample=SAMPLES)
@@ -27,7 +32,7 @@ def qc_summary_inputs(wildcards):
 
 
 def qc_report_inputs(wildcards):
-    d = {"sample_qc": SAMPLE_QC}
+    d = {"sample_qc": SAMPLE_QC, "samplesheet": config["samplesheet"]}
     if RUN_ANALYSIS:
         d["deg"] = DEG_SUMMARY
         d["vst"] = VST_COUNTS

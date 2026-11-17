@@ -15,6 +15,7 @@ run_processing: true      # FASTQ -> BAM -> strand BAMs -> bigWigs -> per-gene c
 run_analysis: true        # counts -> DESeq2 -> GSEA -> Sankey
 qc_report: true           # static HTML report: <outputDir>/qc/TTpipe_qc_report.html
 qc_report_banner: ''      # optional text shown at the top of the report (e.g. 'test run')
+results_explorer: true    # interactive results page (volcano/MA, gene search, tables, GSEA): <outputDir>/analysis/TTpipe_results_explorer.html (needs run_analysis)
 multiqc: true             # also a standard MultiQC page (FastQC, fastp, STAR, Picard): <outputDir>/qc/TTpipe_multiqc.html (processing runs only)
 multiqc_extra: ''         # extra MultiQC arguments
 

@@ -1,5 +1,41 @@
 # TTpipe: TT-seq (TTchem-seq) Processing and Analysis Pipeline
 
+## At a glance
+
+**What it does.** Turns paired-end TT-seq sequencing files (FASTQ) into
+alignments, strand-specific genome-browser tracks, per-gene counts,
+differential expression, gene-set enrichment and a quality-control (QC)
+report, using one command and two text files (a samplesheet and a config).
+
+**Who it is for.** Bench and computational biologists who have TT-seq or
+TTchem-seq data, at any institution. You do not need to know Snakemake (the
+workflow engine that runs the steps), SLURM (a common cluster job scheduler)
+or conda (a software installer) beforehand; the documentation explains each
+when it first matters. The pipeline has been run on real data only for
+mouse; other organisms are covered in [Other genomes](#other-genomes).
+
+**What you need.**
+
+- A Linux computer: either a SLURM cluster or a single machine with roughly
+  30 GB of free memory (for a mouse genome; see [Cluster
+  reference](docs/cluster.qmd)). macOS is not supported (see
+  [Prerequisites](#prerequisites)).
+- About 0.5 GB for a one-time [Miniforge](https://github.com/conda-forge/miniforge)
+  (conda) install, plus disk space for the conda environments, the STAR
+  genome index and your outputs. No other software is installed by hand;
+  Snakemake downloads the rest on first use, so the machine that builds the
+  environments needs internet access.
+- Your FASTQ files, a genome FASTA and a matching GTF annotation, and the
+  samplesheet (one row per sample).
+
+**What you get.** Under one output folder: filtered BAMs, bigWig tracks, gene
+counts, DESeq2 tables, GSEA tables, a Sankey diagram, an interactive results
+page, and `qc/TTpipe_qc_report.html` with a traffic light per sample. The
+list is detailed below in [What this pipeline does](#what-this-pipeline-does).
+
+**Stuck?** See [Troubleshooting](#troubleshooting) and the longer
+[troubleshooting chapter](docs/troubleshooting.qmd).
+
 ## What this pipeline does
 
 A cell's RNA is a mixture of old and new molecules. Ordinary RNA-seq
@@ -101,7 +137,9 @@ in the book).
 The same workflow as a rule graph (every optional branch switched on; each
 box is a rule, each arrow a dependency). It is generated from the real
 Snakefile by `python scripts/make_dag.py`; re-run that after changing a
-rule.
+rule. The same script also writes a static, stage-grouped SVG
+([`docs/img/dag_full.svg`](docs/img/dag_full.svg)) when Graphviz is installed, and a test
+fails if the diagrams go stale.
 
 <!-- dag:start -->
 ```mermaid
@@ -128,6 +166,7 @@ flowchart LR
     sankey[sankey]
     fgsea[fgsea]
     rnk[rnk]
+    results_explorer[results_explorer]
   end
   subgraph Reporting["Reporting"]
     qc_report[qc_report]
@@ -139,13 +178,16 @@ flowchart LR
   count_matrix --> deseq2
   count_matrix --> qc_summary
   deseq2 --> qc_report
+  deseq2 --> results_explorer
   deseq2 --> rnk
   deseq2 --> sankey
   fastp --> multiqc
   fastp --> star_align
   fastqc --> multiqc
+  fgsea --> results_explorer
   gene_info --> count_matrix
   gene_info --> qc_summary
+  gene_info --> results_explorer
   gene_info --> rnk
   htseq_count --> count_matrix
   mapq_filter --> mark_duplicates
@@ -160,6 +202,7 @@ flowchart LR
   qc_summary --> qc_report
   rnk --> fgsea
   sample_table --> deseq2
+  sample_table --> results_explorer
   scale_factors --> bigwig
   scale_factors --> qc_report
   split_strands --> bigwig_sample
@@ -189,12 +232,13 @@ DESeq2 uses every sample separately.
   `profiles/<site>/env.sh` (a one-time Miniforge install in
   `$HOME/miniforge3` works everywhere).
 - Paired-end TT-seq FASTQ files (`.fastq.gz`).
-- A mouse (or other) **reference**: a genome FASTA and a GTF annotation from
+- A **reference** for your organism (mouse by default; see [Other
+  genomes](#other-genomes)): a genome FASTA and a GTF annotation from
   the **same source**, so that chromosome names match (see
   [The reference](#the-reference) below). A STAR index is built once, or
   you can point at an existing one.
 - Optional, for GSEA: gene-set `.gmt` files with gene **symbols** (for
-  example MSigDB mouse collections), which you download yourself.
+  example MSigDB collections for your organism), which you download yourself.
 
 Everything else (FastQC, fastp, STAR, samtools, Picard, deepTools, HTSeq,
 R with DESeq2 / fgsea / ggforce, MultiQC) is installed by Snakemake into
@@ -225,54 +269,168 @@ choices:
 TTpipe does not check that the names match; look at the first lines of both
 files (`grep '>' genome.fa | head`, `head genes.gtf`) before you start.
 
-## Quickstart
+## Other genomes
 
-1. Clone the workflow:
+TTpipe contains no mouse-specific code. A search of the workflows and scripts
+finds mouse only in default file paths, comments and the `genome:` label, which
+is a free-text name shown in reports. Choosing another organism is a matter of
+config keys.
+
+**Status, stated plainly.** Only mouse (mm10, GENCODE vM25) has been run on
+real data. Human is expected to work but has not been tested. Any other
+organism is untested.
+
+**Human.** Set these keys in `config/TTpipeConfig.yaml`:
+
+```yaml
+genome: 'hg38'                     # label only
+genome_fasta: '/path/to/GRCh38.primary_assembly.genome.fa'    # GENCODE human, primary assembly
+gtf: '/path/to/gencode.v<release>.annotation.gtf'             # GENCODE human GTF, same release family
+star_index: '/path/to/human_STARgenome'
+build_star_index: true             # first run only
+sjdb_overhang: 100                 # your read length - 1
+gsea_collections:
+  Hallmarks: '/path/to/h.all.v<release>.Hs.symbols.gmt'      # human MSigDB, gene symbols
+```
+
+Use the GENCODE human primary-assembly FASTA and the GTF from the same
+GENCODE source, so that both name chromosomes `chr1`, `chr2`, ... (the check
+described in [The reference](#the-reference) applies unchanged). Set
+`sjdb_overhang` to your read length minus 1. For GSEA use the human MSigDB
+collections whose file names end in `.Hs.symbols.gmt`: TTpipe ranks genes by
+the `gene_name` in the GTF, so the gene sets must use the same symbols.
+
+**Any other organism.** You need a genome that STAR can index and a GTF in which:
+
+- every gene has a line with feature type `gene` and a `gene_id` attribute
+  (`htseq_feature` and `htseq_id_attribute` can name another feature or
+  attribute, but counting exons instead of genes changes the science: most
+  TT-seq signal is in introns, see [From Reads to
+  Results](docs/journey.qmd));
+- ideally, a `gene_name` attribute; if it is missing, `gene_name` falls back
+  to `gene_id` (GSEA then needs gene sets keyed by that id);
+- for the rRNA QC metric, GENCODE-style `gene_type` values `rRNA` and
+  `Mt_rRNA`, or Ensembl-style `gene_biotype` with the same values. Without
+  them the rRNA column is blank; nothing else is affected.
+
+STAR memory for genomes larger than mouse is not measured. Mouse measured
+about 26 GB for alignment and about 29 GB for the index build; check your own
+runs with `seff` or `sacct` and raise `star_align` and `star_index` `mem_mb`
+in your profile (see [Cluster reference](docs/cluster.qmd#tuning-resources)).
+The full walk-through is in [Setup](docs/setup.qmd#other-genomes).
+
+## Quick start
+
+The two routes differ only in steps 4 and 5. Both assume Linux. "Your
+account" and "your partition" mean values specific to your cluster; the steps
+show how to look them up.
+
+**Both routes**
+
+1. Install Miniforge once (skip if you have conda 24.7.1 or newer in a
+   place you can write to) and clone TTpipe:
 
     ```bash
+    wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
+    bash Miniforge3-Linux-x86_64.sh -b -p $HOME/miniforge3
     git clone https://github.com/jpflores-13/TTpipe.git
     cd TTpipe
     ```
 
-2. Edit the tab-separated `samplesheet.txt`. One row per sample (one pair
-   of FASTQ files):
+2. Download a matching genome FASTA and GTF ([The reference](#the-reference)
+   or [Other genomes](#other-genomes)) and unzip them.
+
+3. Edit the tab-separated `samplesheet.txt`, one row per sample (one pair of
+   FASTQ files), and the lines of `config/TTpipeConfig.yaml` that name your
+   files:
 
     | Name | Condition | Replicate | Read1 | Read2 | Sequencing_Directory |
     |------|-----------|-----------|-------|-------|----------------------|
     | ZFP143_DMSO_rep1 | DMSO | rep1 | ZFP143_DMSO_rep1_R1.fastq.gz | ZFP143_DMSO_rep1_R2.fastq.gz | /path/to/fastq/ |
 
+    ```yaml
+    samplesheet: 'samplesheet.txt'
+    genome_fasta: '/path/to/genome.fa'
+    gtf: '/path/to/annotation.gtf'
+    star_index: '/path/to/STARgenome'
+    build_star_index: true          # first run only; then set to false
+    strandedness: 'dUTP'            # or 'forward': check with your library prep
+    reference_condition: 'DMSO'     # the control Condition in your samplesheet
+    ```
+
    `Name`, `Condition` and `Replicate` are always required; `Read1`,
    `Read2` and `Sequencing_Directory` only when `run_processing` is true.
    Values may contain only letters, digits, `.`, `_` and `-`. The shipped
-   file lists the eight samples of the example in the
-   [vignette](docs/vignette.qmd) (DMSO, 2H, 6H, 24H, two replicates each)
-   with placeholder paths.
+   samplesheet lists the eight samples of the mouse example in the
+   [vignette](docs/vignette.qmd) with placeholder paths; replace them.
 
-3. Edit `config/TTpipeConfig.yaml`. The lines most runs change:
+**(a) On a SLURM cluster**
 
-    ```yaml
-    samplesheet: 'samplesheet.txt'
-    genome_fasta: '/path/to/GRCm38.primary_assembly.genome.fa'
-    gtf: '/path/to/gencode.vM25.annotation.gtf'
-    star_index: '/path/to/mm10_STARgenome'
-    build_star_index: true          # first run only; then set to false
-    strandedness: 'dUTP'            # or 'forward': check with your library prep
-    reference_condition: 'DMSO'
-    ```
-
-4. Pick your compute site (see [Compute sites](#compute-sites)). The default
-   is `hpcProfile: 'profiles/local'`; on a cluster set `TTPIPE_PROFILE` once
-   in `~/.bashrc`.
-
-5. Dry run, then submit:
+4. Make a profile for your cluster (a folder with your partition, account
+   and memory settings). Look up the values with `sinfo -s` (partitions)
+   and `sacctmgr show assoc user=$USER` (accounts):
 
     ```bash
-    bash   TTpipe.sh -n      # list every job; nothing runs
-    sbatch TTpipe.sh         # whole workflow (bash TTpipe.sh on profiles/local)
+    cp -r profiles/slurm-template profiles/mycluster
+    nano profiles/mycluster/config.yaml   # slurm_account, slurm_partition
+    nano profiles/mycluster/env.sh        # only if you do not use $HOME/miniforge3
+    echo 'export TTPIPE_PROFILE=profiles/mycluster' >> ~/.bashrc
+    echo 'export TTPIPE_OUTPUT_ROOT=/path/with/space/ttpipe' >> ~/.bashrc
+    source ~/.bashrc
     ```
 
+   If your home directory has a small quota, also set `CONDA_PKGS_DIRS`,
+   `XDG_CACHE_HOME` and `TMPDIR` to a larger location first
+   ([Troubleshooting](docs/troubleshooting.qmd)).
+5. Dry run, build the conda environments on a node with internet access,
+   then submit:
+
+    ```bash
+    bash   TTpipe.sh -n                          # lists every job; runs nothing
+    bash   TTpipe.sh --conda-create-envs-only    # downloads the software once
+    sbatch TTpipe.sh                             # the whole workflow
+    ```
+
+**(b) On a single machine**
+
+4. The default profile is `profiles/local`; nothing to set up. It limits
+   total memory to 64 GB (`mem_mb=64000` in `profiles/local/config.yaml`);
+   lower or raise that to your machine. STAR needs roughly 26 to 30 GB for a
+   mouse genome, so the machine needs at least that much free memory.
+5. Dry run, then run:
+
+    ```bash
+    bash TTpipe.sh -n
+    bash TTpipe.sh
+    ```
+
+**Both routes, last step**
+
 6. Open `output/qc/TTpipe_qc_report.html` in a browser, and take the tracks,
-   counts and DESeq2 tables from `output/`.
+   counts and DESeq2 tables from `output/`. If a run stops, see [After a
+   failed run](#after-a-failed-run).
+
+### Trying it on a small example
+
+The folder `tests/dryrun/` holds **placeholder files only**: one made-up read,
+an 80-base fake chromosome, a fake STAR index. They exist so that a Snakemake
+dry run (`bash TTpipe.sh -n` style, as the test suite does) can build the job
+graph. No tool is run on them and they are not real data; a full run on them
+will not work. For a first real run, use the public mouse embryonic stem cell
+data of GEO series
+[GSE260914](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE260914)
+(the [vignette](docs/vignette.qmd) shows how to find the runs). To keep the
+first run small and quick, take only the first N read pairs of each file,
+for example (keeping the same pairs in both mates):
+
+```bash
+zcat sample_R1.fastq.gz | head -n 12000000 | gzip > sub_R1.fastq.gz   # 3 million pairs
+zcat sample_R2.fastq.gz | head -n 12000000 | gzip > sub_R2.fastq.gz
+```
+
+(a FASTQ record is 4 lines, so `head -n` of 4 x N lines keeps N read pairs.)
+Subsampling this way is a general technique; it keeps the pairs matched, but
+a subsample is only for checking that the pipeline works, not for results.
 
 ### Dry run first
 
@@ -292,6 +450,9 @@ Three keys choose what runs (at least one must be true):
 | `run_processing` | `true` | FASTQ to BAM, tracks and counts |
 | `run_analysis` | `true` | DESeq2, GSEA, Sankey |
 | `qc_report` | `true` | QC table and HTML report |
+
+`results_explorer` (default `true`) adds the interactive results page; it
+needs `run_analysis` (see [The results explorer](#the-results-explorer)).
 
 `run_processing: false` with `analysis_counts: '/path/to/counts.txt'` runs
 the analysis on a count matrix you already have. `multiqc: true` (default)
@@ -353,6 +514,7 @@ Finished steps are kept; only the failed and missing ones are redone.
 | `rnk` | 1 per comparison | Ranked gene list for GSEA |
 | `fgsea` | 1 per collection and comparison | Preranked GSEA |
 | `sankey` | 1 | Up / down / unchanged categories across comparisons |
+| `results_explorer` | 1 (`results_explorer: true`) | One interactive HTML page of the DESeq2 and GSEA results |
 | `qc_summary` | 1 | Per-sample QC table |
 | `qc_report` | 1 | The static HTML report |
 | `multiqc` | 1 (`multiqc: true`) | Standard MultiQC page |
@@ -378,11 +540,9 @@ when it is set; an absolute one is used as written.
 
 | Folder | For |
 |--------|-----|
-| `profiles/biowulf/` | NIH Biowulf (SLURM) |
-| `profiles/longleaf/` | UNC Longleaf (SLURM) |
-| `profiles/pioneer/` | Case Western Pioneer (SLURM) |
-| `profiles/slurm-template/` | Any other SLURM cluster: copy and fill in the `<...>` values |
+| `profiles/slurm-template/` | **Start here on any SLURM cluster**: copy it and fill in the `<...>` values |
 | `profiles/local/` | One machine with no scheduler |
+| `profiles/biowulf/`, `profiles/longleaf/`, `profiles/pioneer/` | **Examples only**: the same template filled in for three real SLURM sites (NIH Biowulf, UNC Longleaf, Case Western Pioneer), using the partition names the author used there. Useful as a model; your own site needs its own profile |
 
 Each folder has two files: `env.sh` (sourced by the launchers; makes
 `python3` and `conda` available) and `config.yaml` (the Snakemake profile:
@@ -402,8 +562,11 @@ sbatch TTpipe.sh
 ```
 
 `sinfo -s` lists partitions, `sacctmgr show assoc user=$USER` lists your
-accounts. The shipped `longleaf` and `pioneer` profiles name a SLURM
-account that is not yours: edit it.
+accounts. The `longleaf` and `pioneer` profiles contain a required
+placeholder, `<your-slurm-account>`, which SLURM rejects until you replace it
+with your own account (or delete the line if your cluster has no accounts).
+[Cluster reference](docs/cluster.qmd) has a step-by-step guide for your own
+cluster and for a single workstation.
 
 ---
 
@@ -439,6 +602,7 @@ output/
 │   ├── deseq2/    degs_{treatment}_vs_{reference}.csv, deg_summary.tsv,
 │   │              normalized_counts.tsv, vst.tsv, sankey_categories.tsv
 │   ├── gsea/      {comparison}.rnk, {collection}_{comparison}.tsv
+│   ├── TTpipe_results_explorer.html    # interactive results page (open in a browser)
 │   └── figures/   pca.pdf, sankey.pdf
 ├── reference/star_index/               # only if build_star_index is true and star_index is empty
 ├── logs/   benchmarks/                 # logs for the jobs that are not per sample
@@ -477,6 +641,43 @@ published standards. `docs/qc.qmd` explains how to read each panel.
 
 ---
 
+## The results explorer
+
+`output/analysis/TTpipe_results_explorer.html` is written by
+`scripts/results_explorer.py` when `results_explorer: true` (the default; it
+needs `run_analysis`, and works in analysis-only mode too). It is one static
+file: the data are embedded as JSON and the plotting library is inlined, so
+you open it by double-clicking it (or `file://` in a browser) with no server
+and no network, and you can email it. It has:
+
+- a contrast menu and a volcano / MA toggle; points are Up / Down / n.s.
+  (Sankey colours), with live Up and Down counts;
+- two cut-offs (padj and |log2FC|) that start at `alpha` and
+  `lfc_threshold` from the config and can be changed on the page;
+- a gene biotype filter (`gene_type` from the GTF; protein_coding and
+  lncRNA first, the rest grouped) and "colour by biotype";
+- gene search (symbol or gene_id, prefix match), labels for the top N
+  genes, and hover text with name, biotype, baseMean, log2FC and padj;
+- click a point (or a table row) for the per-sample normalized counts of
+  that gene, coloured by condition;
+- a sortable, filterable results table with a "download CSV" button for
+  the rows currently matching the filters;
+- a GSEA tab (pathway, size, NES, pval, padj, leadingEdge) when fgsea
+  results exist; with no GSEA results there is no tab.
+
+Genes with NA padj are shown as n.s. Only the cut-offs on the page change
+when you move a slider: `deg_summary.tsv`, the Sankey and the GSEA files
+always use the config values. Biotype filtering uses the annotation's
+`gene_type` (GENCODE), so "lncRNA" is whatever the annotation calls lncRNA;
+nothing is detected de novo. This version has no genome browser or track
+panel and does no eRNA calling; tracks and custom feature sets are future
+work. The page has been exercised only on synthetic data (including a
+headless Chrome run of its controls) until it is run on real pipeline
+output. A file with many contrasts or large GSEA collections can reach tens
+of MB; the job log prints the size and warns above 40 MB.
+
+---
+
 ## Pipeline files
 
 | File | Purpose |
@@ -493,10 +694,12 @@ published standards. `docs/qc.qmd` explains how to read each panel.
 | `workflows/rules/processing.smk` | FASTQ to BAM, tracks, counts |
 | `workflows/rules/analysis.smk` | DESeq2, ranked lists, fgsea, Sankey |
 | `workflows/rules/report.smk` | QC table and HTML report |
+| `workflows/rules/explorer.smk` | Interactive results explorer |
 | `workflows/rules/multiqc.smk` | Optional MultiQC page |
 | `scripts/gene_info.py`, `make_count_matrix.py`, `scale_factors.py` | Processing helpers |
 | `scripts/run_deseq2.R`, `make_rnk.R`, `run_fgsea.R`, `make_sankey.R`, `tt_analysis_utils.R` | Analysis scripts |
 | `scripts/qc_summary.py`, `qc_report.py` | QC table and report |
+| `scripts/results_explorer.py` | Interactive results page |
 | `scripts/make_dag.py` | Regenerates the rule-graph diagrams |
 | `envs/*.yml` | Conda environments used by the rules |
 | `tests/` | pytest, placeholder fixtures for dry runs (used by CI) |
@@ -522,6 +725,11 @@ published standards. `docs/qc.qmd` explains how to read each panel.
 | Jobs go to the wrong cluster's partitions | `TTPIPE_PROFILE` not set, so the config default was used | `echo $TTPIPE_PROFILE`; set it or pass `--profile` |
 | No emails arrive | `mail` missing or blocked on the cluster | Test `echo test \| mail -s test $TTPIPE_EMAIL`; change `notify: command:` |
 | A job failed | - | Per-sample logs are in `output/<sample>/logs/`, others in `output/logs/` |
+
+More problems, each as symptom, cause and fix (disk quota errors while
+building environments, MultiQC import errors, memory kills, internet access
+for the first run, and others), are in the
+[troubleshooting chapter](docs/troubleshooting.qmd).
 
 For a description of every rule and script, see
 [`CODE_GUIDE.md`](CODE_GUIDE.md).

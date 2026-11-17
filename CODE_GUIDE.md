@@ -77,6 +77,7 @@ samplesheet --> sample_table                                    counts/samples_d
 counts_deseq2.txt + samples_deseq2.txt --> deseq2               analysis/deseq2/degs_*.csv, deg_summary.tsv, normalized_counts.tsv, vst.tsv, figures/pca.pdf
 degs_*.csv + gene_info --> rnk --> fgsea                        analysis/gsea/{comparison}.rnk, {collection}_{comparison}.tsv
 degs_*.csv --> sankey                                           analysis/figures/sankey.pdf, analysis/deseq2/sankey_categories.tsv
+DEG tables + gene_info + normalized counts [+ fgsea] --> results_explorer   analysis/TTpipe_results_explorer.html
 everything --> qc_summary --> qc_report                         qc/sample_qc.tsv, qc/TTpipe_qc_report.html
 FastQC, [fastp], STAR, Picard --> multiqc                       qc/TTpipe_multiqc.html
 ```
@@ -114,6 +115,7 @@ flowchart LR
     sankey[sankey]
     fgsea[fgsea]
     rnk[rnk]
+    results_explorer[results_explorer]
   end
   subgraph Reporting["Reporting"]
     qc_report[qc_report]
@@ -125,13 +127,16 @@ flowchart LR
   count_matrix --> deseq2
   count_matrix --> qc_summary
   deseq2 --> qc_report
+  deseq2 --> results_explorer
   deseq2 --> rnk
   deseq2 --> sankey
   fastp --> multiqc
   fastp --> star_align
   fastqc --> multiqc
+  fgsea --> results_explorer
   gene_info --> count_matrix
   gene_info --> qc_summary
+  gene_info --> results_explorer
   gene_info --> rnk
   htseq_count --> count_matrix
   mapq_filter --> mark_duplicates
@@ -146,6 +151,7 @@ flowchart LR
   qc_summary --> qc_report
   rnk --> fgsea
   sample_table --> deseq2
+  sample_table --> results_explorer
   scale_factors --> bigwig
   scale_factors --> qc_report
   split_strands --> bigwig_sample
@@ -266,7 +272,7 @@ The single source of truth for settings. Key groups:
 | Group | Keys |
 |-------|------|
 | Samples | `samplesheet` |
-| What to run | `run_processing`, `run_analysis`, `qc_report`, `multiqc`, `multiqc_extra`, `analysis_counts` |
+| What to run | `run_processing`, `run_analysis`, `qc_report`, `results_explorer`, `multiqc`, `multiqc_extra`, `analysis_counts` |
 | Site and location | `hpcProfile`, `outputDir` |
 | Reference | `genome`, `genome_fasta`, `gtf`, `star_index`, `build_star_index`, `sjdb_overhang` |
 | Notifications | `notify` (`email`, `events`, `command`) |
@@ -288,7 +294,7 @@ Loads the config, includes `rules/common.smk`, and defines:
 - `rule sample_table`: a `run:` rule (no tool, no conda environment) that
   writes `counts/samples_deseq2.txt` (`sample`, `condition`, `replicate`)
   from the samplesheet. DESeq2 and the QC report read it.
-- includes `processing.smk`, `analysis.smk`, `report.smk`, `multiqc.smk`.
+- includes `processing.smk`, `analysis.smk`, `explorer.smk`, `report.smk`, `multiqc.smk`.
 
 ### `workflows/rules/common.smk`
 
@@ -416,6 +422,20 @@ wildcard, so it cannot be a second output of the per-collection `fgsea`
 rule. The Sankey axis labels are the treatment conditions when all
 comparisons share one reference (for example `2H`, `6H`, `24H`), otherwise
 the full comparison names.
+
+### Results explorer (`explorer.smk`)
+
+| Rule | Script | Config keys | Env | Threads | Output |
+|------|--------|-------------|-----|---------|--------|
+| `results_explorer` | `scripts/results_explorer.py` | `results_explorer`, `alpha`, `lfc_threshold` (initial cut-offs), `condition_order`, `gsea_collections`, `qc_report_banner` | `ttpipe_qc` | 1 | `analysis/TTpipe_results_explorer.html` |
+
+Inputs: every `degs_{comparison}.csv`, `counts/gene_info.tsv`,
+`normalized_counts.tsv`, `samples_deseq2.txt`, `deg_summary.tsv`, and the
+fgsea tables when `gsea_collections` is set. The path template
+`RESULTS_EXPLORER` is in `common.smk` and is added to `analysis_targets()`
+only when `results_explorer` is true (default true), so the rule runs in
+analysis-only mode too and never in a processing-only run. It reuses the
+`ttpipe_qc` environment (pandas, numpy, plotly); no dependency was added.
 
 ### Reporting (`report.smk`, `multiqc.smk`)
 
@@ -556,6 +576,26 @@ below `fail` and warns below `warn`; `lower_is_better` the reverse; a value
 exactly on an edge is not penalised; a sample's status is its worst metric;
 metrics without data are `n/a` and do not count.
 
+### `scripts/results_explorer.py`
+
+Builds the single-file interactive results page. `prepare_data()` reads the
+tables and returns a plain dict (a global gene table, then per contrast the
+arrays `g`, `bm`, `lfc`, `padj`; floats rounded to 4-5 significant digits;
+genes with NA baseMean dropped; NA padj kept as `null`; `gene_name` falls
+back to `gene_id`; optional `norm` and `gsea` blocks). `build_html()` puts
+that dict (`to_json()` escapes `<`, `>`, `&`) into a
+`<script type="application/json">` element, inlines plotly.js once and adds
+the vanilla JavaScript (`JS`) and markup. The two are separate so the data
+preparation is tested without a browser. Opening the file with `#selftest`
+appended to the URL runs a scripted pass through the real controls and
+writes PASS/FAIL lines into the page; `tests/test_results_explorer.py` uses
+it with headless Chrome (skipped when Chrome is absent). Up / Down / n.s.
+is decided in the browser: Up needs `padj < cut-off` and `log2FC > |cut-off|`,
+Down the mirror image, and NA padj is n.s. The CLI prints the file size and
+warns above 40 MB. Limits: no genome browser or tracks, no eRNA calling,
+biotypes come only from the annotation, and it has been run only on
+synthetic data.
+
 ### `scripts/make_dag.py`
 
 Runs `snakemake --rulegraph` on the placeholder fixtures in `tests/dryrun/`
@@ -575,7 +615,7 @@ them; `--check` exits non-zero if the committed files are out of date
 | `ttpipe_tracks.yml` | python 3.8, samtools 1.12, deeptools 3.4.2 | `merge_bams`, `scale_factors`, `bigwig`, `bigwig_sample` |
 | `ttpipe_count.yml` | python 3.8, htseq 0.13.5, pandas | `gene_info`, `htseq_count`, `count_matrix` |
 | `ttpipe_r.yml` | r-base 4.4.3, DESeq2 1.46.0, fgsea 1.32.2, BiocParallel 1.40.0, ggplot2 3.5.1, ggforce 0.4.2, tidyr 1.3.1 | `deseq2`, `rnk`, `fgsea`, `sankey` |
-| `ttpipe_qc.yml` | python 3.11, pandas, numpy, pyyaml, tabulate, plotly (version floors) | `qc_summary`, `qc_report` |
+| `ttpipe_qc.yml` | python 3.11, pandas, numpy, pyyaml, tabulate, plotly (version floors) | `qc_summary`, `qc_report`, `results_explorer` |
 | `ttpipe_multiqc.yml` | python 3.10, multiqc 1.14 | `multiqc` |
 
 Versions of the alignment, tracks and count environments are the ones the
@@ -604,6 +644,10 @@ See [`docs/cluster.qmd`](docs/cluster.qmd).
   that every R script parses.
 - `tests/test_processing_scripts.py`: `gene_info.py`, `make_count_matrix.py`,
   `scale_factors.py` on small invented inputs.
+- `tests/test_results_explorer.py`: data preparation, self-containment, NA
+  padj, missing normalized counts / GSEA, gene_name fallback, and (when
+  Chrome is installed) the page's JavaScript in headless Chrome, all on
+  synthetic tables.
 - `tests/test_qc_report.py`: the parsers, thresholds, PCA, and synthetic
   end-to-end reports (invented numbers, labelled as synthetic).
 - `tests/test_dryrun.py`: Snakemake dry runs (`snakemake -n`) against the
@@ -673,7 +717,8 @@ Up / Down / n.s. categories for the Sankey.
 3. `workflows/TTpipe.snakefile` (entry point)
 4. `workflows/rules/processing.smk`
 5. `workflows/rules/analysis.smk` and `scripts/run_deseq2.R`
-6. `workflows/rules/report.smk`, `scripts/qc_summary.py`, `scripts/qc_report.py`
+6. `workflows/rules/report.smk`, `scripts/qc_summary.py`, `scripts/qc_report.py`;
+   then `workflows/rules/explorer.smk` and `scripts/results_explorer.py`
 7. `profiles/<your site>/config.yaml`
 
 ## Project layout
@@ -687,8 +732,8 @@ TTpipe/
 ├── profiles/      biowulf  local  longleaf  pioneer  slurm-template
 ├── scripts/       gene_info.py  make_count_matrix.py  scale_factors.py
 │                  run_deseq2.R  make_rnk.R  run_fgsea.R  make_sankey.R  tt_analysis_utils.R
-│                  qc_summary.py  qc_report.py  make_dag.py
-├── workflows/     TTpipe.snakefile  rules/{common,processing,analysis,report,multiqc}.smk
+│                  qc_summary.py  qc_report.py  results_explorer.py  make_dag.py
+├── workflows/     TTpipe.snakefile  rules/{common,processing,analysis,explorer,report,multiqc}.smk
 ├── tests/         pytest + placeholder fixtures (tests/dryrun/)
 └── docs/          Quarto book, img/ (generated rule graphs)
 ```

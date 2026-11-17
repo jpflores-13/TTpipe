@@ -22,6 +22,7 @@ ANALYSIS
   sankey           <- deseq2
   fgsea            <- rnk
   rnk              <- deseq2, gene_info
+  results_explorer <- deseq2, fgsea, gene_info, sample_table
 
 REPORTING
   qc_report        <- bigwig, bigwig_sample, deseq2, qc_summary, scale_factors

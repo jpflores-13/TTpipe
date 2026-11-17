@@ -113,6 +113,7 @@ mouse-genome needs, not benchmarks of TTpipe.**
 | `rnk` | 1 | 2000 | 15 | |
 | `fgsea` | 2 | 8000 | 120 | |
 | `sankey` | 1 | 4000 | 30 | |
+| `results_explorer` | 1 | 4000 | 30 | the page grows with contrasts and GSEA collections; raise memory only if the job log shows it |
 | `qc_summary` | 1 | 2000 | 15 | |
 | `qc_report` | 2 | 8000 | 30 | |
 | `multiqc` | 1 | 4000 | 30 | |

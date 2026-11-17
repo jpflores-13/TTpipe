@@ -20,6 +20,7 @@ book:
     - qc.qmd
     - analysis.qmd
     - recipes.qmd
+    - troubleshooting.qmd
     - validation.qmd
     - part: "Under the Hood"
       chapters:

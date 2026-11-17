@@ -1,0 +1,201 @@
+# Troubleshooting and FAQ
+
+Every entry below was met while building or testing TTpipe, and each is
+written as **symptom, cause, fix**. Where a statement rests on general
+Snakemake, conda or SLURM behaviour rather than on something checked in this
+repository, it carries a note saying "general knowledge". For the short list
+of messages that TTpipe itself prints when it checks your samplesheet and
+config (missing column, unknown condition, and so on), see the table in the
+[README](https://github.com/jpflores-13/TTpipe#troubleshooting). Where to look
+for logs: per-sample logs are in `<outputDir>/<sample>/logs/`, the others in
+`<outputDir>/logs/`, SLURM job logs in `<outputDir>/logs_slurm/`.
+
+## `Disk quota exceeded` while building environments or starting Snakemake
+
+**Symptom.** The first run stops while conda builds an environment, or
+Snakemake fails to start, with `Disk quota exceeded`.
+
+**Cause.** Two caches sit in your home directory by default. Conda keeps
+downloaded packages in a `pkgs` folder under the Miniforge directory, which
+is usually in `$HOME` (`$HOME/miniforge3`), and Snakemake writes
+`~/.cache/snakemake`. Clusters often give home directories a small quota.
+Seen on the first real run of TTpipe.
+
+**Fix.** Point the caches at a location with space (a scratch or project
+folder; use your own path) before launching, and free the space already used:
+
+```bash
+export CONDA_PKGS_DIRS=/path/with/space/conda_pkgs
+export XDG_CACHE_HOME=/path/with/space/cache
+export TMPDIR=/path/with/space/tmp
+mkdir -p "$CONDA_PKGS_DIRS" "$XDG_CACHE_HOME" "$TMPDIR"
+conda clean --packages        # removes the cached packages in the old location
+```
+
+Put the `export` lines in `~/.bashrc` so that every shell, including the one
+that runs `sbatch`, has them. The conda environments themselves go into
+`.snakemake/conda` in the folder you launch from, so launch from a folder
+with enough space too. (`TMPDIR` is read by many tools; that it also moves
+conda's temporary files is general knowledge.)
+
+## MultiQC fails with `No module named 'pkg_resources'`
+
+**Symptom.** The `multiqc` rule fails at import with
+`No module named 'pkg_resources'`.
+
+**Cause.** MultiQC 1.14, the version TTpipe pins, imports `pkg_resources`,
+which setuptools 70 and later no longer provide. Older checkouts of TTpipe did
+not pin setuptools.
+
+**Fix.** Update to a checkout in which `envs/ttpipe_multiqc.yml` contains
+`setuptools<70`. Because the environment file changed, Snakemake rebuilds that
+environment on the next run; just resubmit. To skip MultiQC altogether, set
+`multiqc: false` in the config.
+
+## DESeq2 fails with `sample names differ between the count matrix and the sample table`
+
+**Symptom.** The `deseq2` rule stops with that message after you added
+samples to a folder that already had results.
+
+**Cause.** In older versions, the sample table `counts/samples_deseq2.txt`
+was not tied to the samplesheet, so Snakemake kept the table from the earlier,
+smaller run while the count matrix had the new samples.
+
+**Fix.** Fixed: the samplesheet is now an input of the `sample_table` rule
+(`workflows/TTpipe.snakefile`), so editing it regenerates the table. If the
+message ever recurs, delete `<outputDir>/counts/samples_deseq2.txt` and run
+again. The same message also appears, for a different reason, in an
+analysis-only run whose count-matrix column names do not match the samplesheet
+`Name` values; then rename the columns or the names.
+
+## Editing a comment in `envs/*.yml` reruns jobs
+
+**Symptom.** After you change anything in a file in `envs/`, even a comment,
+Snakemake wants to rerun every rule that uses that environment, including
+long alignment jobs.
+
+**Cause.** Snakemake treats a changed environment definition as a reason to
+rerun (general knowledge about Snakemake 8's rerun triggers; it is not
+specific to TTpipe).
+
+**Fix.** Ask Snakemake to ignore that trigger. The launcher passes extra
+arguments through, so:
+
+```bash
+bash TTpipe.sh -n --rerun-triggers mtime params input code     # check the plan first
+sbatch TTpipe.sh --rerun-triggers mtime params input code
+```
+
+The list omits `software-env`, the trigger for environment changes. Use this
+only when you know the change does not alter the software.
+
+## Chromosome names differ between the GTF and the genome
+
+**Symptom.** The workflow stops at startup with: `chromosome names differ
+between the GTF (first sequence '1') and the genome (first sequence 'chr1')`
+(the names in your message will be your own).
+
+**Cause.** One file uses `1`, `2`, `X` (Ensembl style) and the other `chr1`,
+`chr2`, `chrX` (GENCODE and UCSC style). The check is in
+`workflows/rules/common.smk`. It compares only the naming style of the first
+sequence, so it cannot catch every mismatch (for example different contig
+sets).
+
+**Fix.** Use a FASTA (or STAR index) and a GTF from the same source, for
+example both from GENCODE. See [Setup](setup.qmd#the-chromosome-name-trap).
+
+## All counts are zero, or very small
+
+**Symptom.** `counts/counts_deseq2.txt` is all zeros or has tiny counts;
+DESeq2 reports almost nothing.
+
+**Cause.** The most common one is a GTF without `gene` lines, or one where
+the gene id is not in a `gene_id` attribute. TTpipe counts with HTSeq using
+`htseq_feature: 'gene'` and `htseq_id_attribute: 'gene_id'`, and the gene
+table is built from the `gene` lines. If the keys do not match your GTF,
+nothing is counted. A chromosome-name mismatch (previous entry) that the
+startup check did not catch gives the same picture.
+
+**Fix.** Look at your GTF: `awk '$3=="gene"' your.gtf | head -2` should show
+lines whose last column contains `gene_id "..."`. If your annotation has no
+such lines, or names the id differently, set `htseq_feature` and
+`htseq_id_attribute` accordingly, but read the caveat in
+[Setup](setup.qmd#other-genomes) first: counting exons instead of genes
+changes the science. Also compare chromosome names between the GTF and the
+FASTA, and check that `strandedness` is right (the QC report's strandedness
+panel shows it).
+
+## STAR runs out of memory or the job is killed
+
+**Symptom.** `star_align` or `star_index` ends with `OUT_OF_MEMORY` (in
+`sacct`) or a "killed" message in its log.
+
+**Cause.** The per-rule memory in the profile is a starting value. On a
+mouse genome STAR alignment measured about 26 GB and the index build about
+29 GB; larger genomes need more and have not been measured.
+
+**Fix.** Raise `mem_mb` for `star_align` and `star_index` in your profile's
+`config.yaml` (`set-resources:`), keeping a margin, and resubmit. Finished
+jobs are kept. Check actual use with `seff <jobid>` or `sacct` (see
+[Cluster reference](cluster.qmd#tuning-resources)). On `profiles/local` the
+global `mem_mb=64000` limit also decides how many jobs run at once; lower or
+raise it to match your machine.
+
+## SLURM rejects the submission and mentions the account
+
+**Symptom.** Jobs are not submitted; SLURM reports an invalid account or
+association.
+
+**Cause.** The profile still contains the `<your-slurm-account>` or
+`<account>` placeholder (the `longleaf` and `pioneer` profiles and
+`slurm-template` ship with one).
+
+**Fix.** Find your account with `sacctmgr show assoc user=$USER` and write it
+into `slurm_account:` in the profile's `config.yaml`; delete the line if your
+cluster does not use accounts. `profiles/slurm-template/config.yaml` explains
+the same. Also check `slurm_partition` against `sinfo -s`.
+
+## "The workflow is locked" after an interrupted run
+
+**Symptom.** Snakemake refuses to start and says the directory is locked.
+
+**Cause.** A previous run was killed (for example by the launcher's wall-time
+limit) before Snakemake could release its lock.
+
+**Fix.** Make sure no TTpipe launcher is still running (`squeue -u $USER`),
+then:
+
+```bash
+bash unlock.sh
+sbatch TTpipe.sh
+```
+
+`unlock.sh` accepts `--configfile` and `--profile` like the launcher.
+
+## The cluster's compute nodes have no internet access
+
+**Symptom.** Environment builds fail with network or download errors inside a
+job.
+
+**Cause.** Snakemake builds each conda environment the first time a rule needs
+it and downloads the packages then. Some clusters allow internet access on the
+login node only. Which nodes have access is a property of your site (general
+knowledge); ask your cluster's support if unsure.
+
+**Fix.** Build all environments once, on a machine that has internet access
+(for example the login node), before submitting the real run:
+
+```bash
+bash TTpipe.sh --conda-create-envs-only
+```
+
+This uses your config and profile and builds the environments without running
+the analysis. Then submit as usual; the environments are reused. The
+reference files and FASTQ files must of course already be on the cluster.
+
+## Not covered here
+
+Problems with logging in to a cluster (SSH keys, network or DNS errors) are
+not TTpipe issues; your site's support is the place for those. If you hit
+something that is not listed, open an issue with the failing rule's log, the
+config you used and the output of `bash TTpipe.sh -n`.

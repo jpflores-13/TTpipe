@@ -3,6 +3,7 @@
 ## Processing (run_processing): FASTQ -> FastQC [-> fastp] -> STAR -> MAPQ filter -> Picard dedup
 ##   -> strand-split BAMs -> replicate-merged BAMs -> bigWig tracks; HTSeq gene counts -> count matrix.
 ## Analysis (run_analysis): DESeq2 per comparison -> fgsea (GSEA preranked) -> Sankey / PCA.
+## Results explorer (results_explorer): one self-contained interactive HTML of the DESeq2 / GSEA results.
 ## Report (qc_report): one self-contained HTML (sample QC, strandedness, replicate correlation, ...).
 ## The switches are in config/TTpipeConfig.yaml. Rules are in workflows/rules/.
 
@@ -31,7 +32,12 @@ rule all:
         all_targets(),
 
 ## Sample metadata for DESeq2 (and the report), straight from the samplesheet.
+## The samplesheet is an input so that editing it (adding samples, changing conditions) regenerates this table;
+## without it Snakemake would keep a stale table from an earlier run (seen on a real run: DESeq2 then failed
+## with 'sample names differ between the count matrix and the sample table').
 rule sample_table:
+    input:
+        config["samplesheet"],
     output:
         SAMPLES_DESEQ2,
     run:
@@ -44,5 +50,6 @@ rule sample_table:
 
 include: "rules/processing.smk"
 include: "rules/analysis.smk"
+include: "rules/explorer.smk"
 include: "rules/report.smk"
 include: "rules/multiqc.smk"

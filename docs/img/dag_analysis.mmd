@@ -9,16 +9,21 @@ flowchart LR
     sankey[sankey]
     fgsea[fgsea]
     rnk[rnk]
+    results_explorer[results_explorer]
   end
   subgraph Reporting["Reporting"]
     qc_report[qc_report]
     qc_summary[qc_summary]
   end
   deseq2 --> qc_report
+  deseq2 --> results_explorer
   deseq2 --> rnk
   deseq2 --> sankey
+  fgsea --> results_explorer
   gene_info --> qc_summary
+  gene_info --> results_explorer
   gene_info --> rnk
   qc_summary --> qc_report
   rnk --> fgsea
   sample_table --> deseq2
+  sample_table --> results_explorer

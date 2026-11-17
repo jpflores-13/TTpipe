@@ -189,6 +189,8 @@ SANKEY_TABLE = OUT + "/analysis/deseq2/sankey_categories.tsv"   # gene_id + Up/D
 SAMPLE_QC    = OUT + "/qc/sample_qc.tsv"              # one row per sample, see scripts/qc_summary.py
 QC_REPORT    = OUT + "/qc/TTpipe_qc_report.html"
 MULTIQC_REPORT = OUT + "/qc/TTpipe_multiqc.html"
+## Results explorer (static interactive HTML: volcano/MA, gene search, tables, GSEA); only if `results_explorer: true`
+RESULTS_EXPLORER = OUT + "/analysis/TTpipe_results_explorer.html"
 
 
 ##### Targets #####
@@ -211,6 +213,8 @@ def analysis_targets():
     t += expand(DEGS, comparison=COMPARISON_NAMES)
     if GSEA_COLLECTIONS:
         t += expand(GSEA_RESULT, collection=list(GSEA_COLLECTIONS), comparison=COMPARISON_NAMES)
+    if config.get("results_explorer", True):
+        t.append(RESULTS_EXPLORER)
     return t
 
 

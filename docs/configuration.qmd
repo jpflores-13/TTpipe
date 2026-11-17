@@ -20,6 +20,7 @@ samplesheet: 'samplesheet.txt'
 run_processing: true
 run_analysis: true
 qc_report: true
+results_explorer: true
 multiqc: true
 multiqc_extra: ''
 analysis_counts: ''
@@ -75,6 +76,7 @@ qc_thresholds: {...}
 | `run_processing` | `true` | FASTQ to BAM, tracks and counts. When false, no FASTQ columns are needed |
 | `run_analysis` | `true` | DESeq2, GSEA, Sankey |
 | `qc_report` | `true` | Per-sample QC table and `TTpipe_qc_report.html` |
+| `results_explorer` | `true` | Interactive results page `analysis/TTpipe_results_explorer.html` (volcano / MA, gene search, tables, GSEA tab). Needs `run_analysis`; its padj and log2FC cut-offs start at `alpha` and `lfc_threshold`. See [Differential expression and GSEA](analysis.qmd#results-explorer) |
 | `multiqc` | `true` | Also `TTpipe_multiqc.html` (FastQC, fastp, STAR, Picard). Only on processing runs |
 | `multiqc_extra` | `''` | Extra arguments passed to `multiqc` |
 | `analysis_counts` | `''` | For `run_processing: false`: path to an existing count matrix (tab-separated, first column `gene_id`, header = sample `Name`s). Empty = use this pipeline's `counts/counts_deseq2.txt` |
@@ -198,7 +200,7 @@ published standards.** See [Reading the QC report](qc.qmd).
 
 There is also an optional key that is not in the shipped file: `qc_report_banner`
 (text shown in a banner at the top of the report; the tests use it to label
-synthetic data).
+synthetic data). The results explorer shows the same banner.
 
 ## Environment variables
 

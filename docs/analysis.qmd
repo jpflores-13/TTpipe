@@ -172,6 +172,62 @@ draws a bar chart of the Up, Down and n.s. counts instead. If the labelled-axes
 variant of the plot cannot be built with the installed `ggforce`, the script falls
 back to plain grey axes.
 
+## The results explorer {#results-explorer}
+
+`analysis/TTpipe_results_explorer.html` (written when `results_explorer: true`,
+the default; also in analysis-only runs) lets you look at the DESeq2 and GSEA
+results without writing code. It is one static file: all data are embedded as
+JSON and the plotting library is inlined, so it opens by double-clicking, from
+a laptop with no network, and can be emailed. Nothing is computed on a server.
+
+**Controls.**
+
+- *Contrast*: one entry per comparison (`<treatment>_vs_<reference>`).
+- *Plot*: **Volcano** shows log2 fold change (x) against -log10(padj) (y);
+  **MA** shows log10(baseMean) (x) against log2 fold change (y). Points are
+  coloured Up (magenta), Down (green) or n.s. (grey), as in the Sankey.
+- *padj cut-off* and *|log2FC| cut-off*: number box plus slider. They start at
+  `alpha` and `lfc_threshold` from the config; changing them updates the plot,
+  the Up / Down counts and the table at once. The files on disk
+  (`deg_summary.tsv`, the Sankey, GSEA input) are not changed. With
+  `lfc_threshold > 0` DESeq2 has already tested against that threshold, so the
+  padj values and the |log2FC| filter on the page are not independent.
+- *Gene biotype*: checkboxes from `gene_type` in `gene_info.tsv`
+  (protein_coding and lncRNA first, other types grouped under "all other
+  biotypes", with a list to pick them one by one). Unchecked types are removed
+  from plot, counts and table. *Colour by biotype* colours the points by type
+  instead of by Up / Down.
+- *Find gene*: symbol or gene_id, prefix match, with a drop-down of matches.
+  The gene is highlighted and labelled. *Label top N genes* labels the N most
+  significant Up / Down genes (smallest padj).
+- Hover shows gene name, gene_id, biotype, baseMean, log2FC and padj. **Click**
+  a point (or a table row) to draw that gene's normalized counts per sample as
+  bars, coloured by condition, from `normalized_counts.tsv`.
+- *Results table*: sortable by clicking a header, filterable by call (Up and
+  Down by default) and by text. 200 rows are drawn at a time (a button shows
+  more). **Download CSV** saves every row matching the current filters, not only
+  the rows drawn, with the contrast name in the file.
+- *GSEA tab* (only when fgsea results exist): pathway, size, NES, pval, padj
+  and leadingEdge for one collection and contrast, sorted by padj with NA last,
+  and a text filter on pathway or gene. The leadingEdge column is cut short;
+  click a cell to expand it. With no GSEA results there is no tab.
+
+**Limits.**
+
+- Genes with NA padj (DESeq2's independent filtering or outlier handling) are
+  shown as n.s.; in the volcano they sit at y = 0. Genes with NA baseMean are
+  not in the file.
+- Biotype filtering uses the `gene_type` of the annotation (GENCODE). "lncRNA"
+  is whatever the GTF calls lncRNA; nothing is detected de novo.
+- There is no genome browser or track panel, and no eRNA calling, in this
+  version. Tracks and custom feature sets are future work.
+- Size: the page holds the full result tables for every contrast, so many
+  contrasts and large GSEA collections make it large. The job log
+  (`logs/results_explorer.log`) prints the size and warns above 40 MB.
+- The page has been exercised only on synthetic data (data preparation tests
+  plus its controls driven in headless Chrome). It has not yet been run on real
+  pipeline output.
+
 ## Deliberate changes in the analysis
 
 The differences from the guide that affect this chapter (the full list is in
