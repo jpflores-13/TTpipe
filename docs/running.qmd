@@ -30,7 +30,9 @@ on it), `--forcerun`, and so on.
 
 The launcher is itself a small SLURM job (1 CPU, 16 GB, 10 days; the memory
 is for building conda environments on a first run). Each rule becomes its own
-job.
+job. Building the environments first, in a separate step, and never two builds
+at once, is described in
+[Cluster reference](cluster.qmd#building-environments).
 
 ## Dry run
 
@@ -47,11 +49,14 @@ For a samplesheet of *S* samples in *C* conditions with the defaults, the table
 has: `fastqc` 2 x *S*; `star_align`, `mapq_filter`, `mark_duplicates` *S* each;
 `split_strands` and `htseq_count` 2 x *S* each; `merge_bams` 3 x *C*; `bigwig`
 3 x *C*; one each of `scale_factors`, `gene_info`, `count_matrix`,
-`sample_table`, `deseq2`, `sankey`, `results_explorer`, `qc_summary`, `qc_report`, `multiqc`; and
+`sample_table`, `deseq2`, `sankey`, `results_explorer`, `stranded_signal`, `qc_summary`, `qc_report`, `multiqc`; and
 `rnk` per comparison (and `fgsea` per collection and comparison) when
 `gsea_collections` is set. (`rnk` and `fgsea` appear only with GSEA
 collections; `fastp`, `bigwig_sample` and `star_index` only when their switch
-is on.)
+is on.) With the experimental `spike_in.enabled: true` there are also one
+`spike_reference`, one `spike_idxstats` per sample, one `spike_summary`, and one
+`spike_size_factors` when `normalize` contains `deseq2` and `run_analysis` is
+true; with `spike_in.enabled: false` (the default) the job list is unchanged.
 
 ## What is running
 
@@ -63,7 +68,9 @@ is on.)
 | Strand and tracks | `split_strands`, `merge_bams`, `scale_factors`, `bigwig` | Forward and reverse BAMs; replicates merged for tracks |
 | Counts | `gene_info`, `htseq_count`, `count_matrix` | Whole-gene counts per strand, then matrices |
 | Statistics | `sample_table`, `deseq2`, `rnk`, `fgsea`, `sankey`, `results_explorer` | One DESeq2 job for all comparisons |
+| Stranded page | `stranded_signal` (if `stranded_plots`) | Locus tracks, metagene profiles and antisense table from the stranded bigWigs |
 | QC | `qc_summary`, `qc_report`, `multiqc` | Read the processing outputs |
+| Spike-in (experimental, off by default) | `spike_reference`, `spike_idxstats`, `spike_summary`, `spike_size_factors` | Combined host + spike-in reference, spike-in pair counts in `spike/`, spike-in scale and size factors; spike-in genes go to `counts/counts_spike.txt`, not the host matrices |
 
 [CODE_GUIDE.md](https://github.com/jpflores-13/TTpipe/blob/main/CODE_GUIDE.md)
 describes every rule in detail.

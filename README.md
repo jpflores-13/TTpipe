@@ -11,8 +11,9 @@ report, using one command and two text files (a samplesheet and a config).
 TTchem-seq data, at any institution. You do not need to know Snakemake (the
 workflow engine that runs the steps), SLURM (a common cluster job scheduler)
 or conda (a software installer) beforehand; the documentation explains each
-when it first matters. The pipeline has been run on real data only for
-mouse; other organisms are covered in [Other genomes](#other-genomes).
+when it first matters. The full pipeline has been run on real data for
+mouse, and the processing part (with an ERCC spike-in) for human; other
+organisms are covered in [Other genomes](#other-genomes).
 
 **What you need.**
 
@@ -54,7 +55,8 @@ analyse and tells you whether the libraries look sane:
 - **Alignments**: coordinate-sorted, MAPQ-filtered, deduplicated BAMs, plus
   per-strand BAMs.
 - **bigWig tracks** for a genome browser, per condition (replicates merged)
-  and per strand, scaled to a common library size.
+  and per strand, scaled to a common library size (or, optionally, by a
+  spike-in).
 - **Per-gene counts** over the whole gene body (introns included, which is
   the key difference from an RNA-seq count), per strand, plus the matrix
   used for DESeq2.
@@ -63,6 +65,13 @@ analyse and tells you whether the libraries look sane:
   how genes move between up, down and unchanged across comparisons.
 - **A QC report**: one self-contained HTML page with pass / warn / fail
   traffic lights per sample, and (optionally) a standard MultiQC page.
+- **A stranded signal page**: per-locus strand-separated tracks, sense /
+  antisense metagene profiles and an antisense-fraction table, in one HTML file.
+- **Optional spike-in normalization** (experimental, off by default): align to
+  a combined host + spike-in reference (for example ERCC92), count the
+  spike-in reads per sample, and scale the tracks and/or the DESeq2 size
+  factors by the spike-in instead of library size. See
+  [Spike-in normalization](#spike-in-normalization-optional-experimental).
 
 It is run with Snakemake 8, on a SLURM cluster or on one machine, and is
 driven by a samplesheet and a config file, following the layout of the
@@ -101,9 +110,15 @@ Please read this before trusting a result:
 - The pytest suite and CI check logic on synthetic and placeholder files and
   run Snakemake dry runs. They do not run STAR, DESeq2 or any other tool on
   real data.
+- The spike-in module is **experimental**. Its processing side has run on
+  real human data (as a mechanics test with very few spike-in reads); DESeq2
+  with spike-in size factors has not been run on real data.
 
-**Validation status.** A real-data test on a cluster is in progress. What
-has and has not been observed is recorded, by hand, in
+**Validation status.** Real-data tests have been run on one cluster
+(Case Western's Pioneer): the full workflow on subsampled mouse TT-seq data
+(GSE260914), and the processing part with an ERCC spike-in on subsampled
+human chrTT-seq data (GSE218726). Only subsets of reads were used. What has
+and has not been observed is recorded, by hand, in
 [`docs/validation.qmd`](docs/validation.qmd) (chapter "Validation status"
 in the book).
 
@@ -301,9 +316,11 @@ finds mouse only in default file paths, comments and the `genome:` label, which
 is a free-text name shown in reports. Choosing another organism is a matter of
 config keys.
 
-**Status, stated plainly.** Only mouse (mm10, GENCODE vM25) has been run on
-real data. Human is expected to work but has not been tested. Any other
-organism is untested.
+**Status, stated plainly.** Mouse (mm10, GENCODE vM25) has been run on real
+data end to end. Human (GRCh38 primary assembly, GENCODE v44) has been run on
+real data for processing only (alignment, filtering, strand split, tracks,
+counts, QC, stranded page), with the analysis switched off; DESeq2 and GSEA on
+human are untested. Any other organism is untested.
 
 **Human.** Set these keys in `config/TTpipeConfig.yaml`:
 
@@ -340,8 +357,10 @@ the `gene_name` in the GTF, so the gene sets must use the same symbols.
   they are not recognised and the metric reads near zero. Nothing else is
   affected.
 
-STAR memory for genomes larger than mouse is not measured. Mouse measured
-about 26 GB for alignment and about 29 GB for the index build; check your own
+STAR memory depends on the genome. Measured: mouse about 26 GB for alignment
+and about 29 GB for the index build; human GRCh38 + ERCC92 about 29 GB for
+alignment and **62.5 GB** for the index build (34 minutes on 16 threads).
+The `pioneer` profile gives `star_index` 72 GB for that reason; check your own
 runs with `seff` or `sacct` and raise `star_align` and `star_index` `mem_mb`
 in your profile (see [Cluster reference](docs/cluster.qmd#tuning-resources)).
 The full walk-through is in [Setup](docs/setup.qmd#other-genomes).
@@ -550,6 +569,20 @@ Finished steps are kept; only the failed and missing ones are redone.
 | `qc_report` | 1 | The static HTML report |
 | `multiqc` | 1 (`multiqc: true`) | Standard MultiQC page |
 
+With `spike_in.enabled: true` (off by default) these rules are added or
+replaced; see [Spike-in normalization](#spike-in-normalization-optional-experimental):
+
+| Rule | Jobs | What it does |
+|------|------|--------------|
+| `spike_reference` | 1 | Combined host + spike-in FASTA and GTF (spike-in names prefixed, `gene` lines added to exon-only GTFs) |
+| `spike_idxstats` | 1 per sample | `samtools idxstats` of the final BAM |
+| `spike_summary` | 1 | Host and spike-in read pairs per sample (and per spike-in contig) |
+| `scale_factors` | 1 | Replaced: from spike-in pairs (`'tracks'` in `normalize`) or from host pairs only |
+| `bigwig_sample` | as above | Replaced: same basis as `scale_factors`, per sample |
+| `count_matrix` | 1 | Replaced: host genes in the usual matrices, spike-in genes in `counts/counts_spike.txt` |
+| `spike_size_factors` | 1 (`'deseq2'` in `normalize`, analysis on) | DESeq2 size factors (`total`) or control genes (`genes`) |
+| `deseq2` | 1 | Replaced: same as above, with the spike-in size factors |
+
 ---
 
 ## Compute sites
@@ -616,7 +649,7 @@ output/
 │   ├── {sample}.bam (.bai)             # MAPQ-filtered, deduplicated
 │   ├── {sample}_forward.bam (.bai)     # reads from RNA transcribed from the + strand
 │   ├── {sample}_reverse.bam (.bai)     # reads from RNA transcribed from the - strand
-│   ├── stats/                          # STAR log, ReadsPerGene, Picard metrics, pair counts
+│   ├── stats/                          # STAR log, ReadsPerGene, Picard metrics, pair counts (+ idxstats with spike-in)
 │   ├── counts/{sample}_{strand}.counts.txt   # HTSeq output
 │   ├── logs/   benchmarks/             # one log and benchmark per job
 ├── merged/{condition}[_forward|_reverse].bam   # replicates merged (for tracks)
@@ -628,16 +661,23 @@ output/
 │   ├── gene_info.tsv                   # gene_id, gene_name, gene_type, chr, start, end, strand, length
 │   ├── counts_forward.txt  counts_reverse.txt
 │   ├── counts_deseq2.txt               # the matrix DESeq2 reads (count_strand)
+│   ├── counts_spike.txt                # spike-in genes x samples (spike-in on, with spike_in.gtf)
 │   └── samples_deseq2.txt              # sample, condition, replicate
+├── spike/                              # only with spike_in.enabled: true
+│   ├── spike_counts.tsv                # sample, condition, host_pairs, spike_pairs_all, spike_pairs_used, spike_pct
+│   ├── spike_contig_counts.tsv         # read pairs per spike-in contig and sample
+│   └── size_factors.tsv | control_genes.txt   # for DESeq2 ('deseq2' in normalize)
 ├── analysis/
 │   ├── deseq2/    degs_{treatment}_vs_{reference}.csv, deg_summary.tsv,
 │   │              normalized_counts.tsv, vst.tsv, sankey_categories.tsv
+│   │              (+ deseq2_size_factors.tsv with spike-in size factors)
 │   ├── gsea/      {comparison}.rnk, {collection}_{comparison}.tsv
 │   ├── TTpipe_results_explorer.html    # interactive results page (open in a browser)
 │   ├── TTpipe_stranded_signal.html     # stranded tracks, metagene, antisense table (open in a browser)
 │   ├── stranded_signal/                # static figures, only if track_static_formats is set
 │   └── figures/   pca.pdf, sankey.pdf
 ├── reference/star_index/               # only if build_star_index is true and star_index is empty
+├── reference/host_spike.gtf, spike_contigs.tsv, spike_genes.tsv   # spike-in on (host_spike.fa is temporary)
 ├── logs/   benchmarks/                 # logs for the jobs that are not per sample
 └── logs_slurm/                         # SLURM job logs (cluster profiles)
 ```
@@ -664,8 +704,9 @@ It shows, per sample (one colour per condition):
 - a **sample correlation** heatmap, a **PCA**, the number of **DEGs** per
   comparison, and the **scale factors** and track list;
 - a box listing every section that was **skipped** and why, and a box of
-  what is **not assessed** (spike-in fraction, labeled-versus-total
-  enrichment, synthesis and degradation rates);
+  what is **not assessed** (labeled-versus-total enrichment, synthesis and
+  degradation rates; the spike-in fraction is not shown in the report yet,
+  it is in `spike/spike_counts.tsv` when the spike-in module is on);
 - **Methods**: every metric's definition and the active thresholds.
 
 Thresholds come from `qc_thresholds` in the config. The `warn` values are
@@ -704,9 +745,9 @@ always use the config values. Biotype filtering uses the annotation's
 `gene_type` (GENCODE), so "lncRNA" is whatever the annotation calls lncRNA;
 nothing is detected de novo. This version has no genome browser or track
 panel and does no eRNA calling; tracks and custom feature sets are future
-work. The page has been exercised only on synthetic data (including a
-headless Chrome run of its controls) until it is run on real pipeline
-output. A file with many contrasts or large GSEA collections can reach tens
+work. The page has been built from real pipeline output on the cluster
+(mouse test: 13,419 genes, three contrasts) and its controls checked in
+headless Chrome; see [Validation](docs/validation.qmd). A file with many contrasts or large GSEA collections can reach tens
 of MB; the job log prints the size and warns above 40 MB.
 
 ---
@@ -725,7 +766,10 @@ works from `file://`). It draws the stranded bigWigs of every condition:
   underneath. A dropdown and a search box choose the locus.
 - **Metagene**: sense and antisense signal relative to gene orientation, TSS-centred
   and gene-body-scaled, per `gene_type` group (default protein_coding and
-  lncRNA, expressed genes only), mean or median.
+  lncRNA, expressed genes only), mean or median. The `lncRNA` group also
+  takes the older GENCODE types (`lincRNA`, `antisense`,
+  `processed_transcript`, ...) that annotations such as mouse vM25 still use;
+  the group's label lists the types it included.
 - **Strand table**: antisense fraction per gene and condition from the strand-split
   counts, sortable, filterable, with a CSV download.
 
@@ -733,8 +777,8 @@ Loci come from `track_loci` (symbols, gene_ids, `chr:start-end`), the top
 `track_top_degs` genes of each DESeq2 contrast, and an optional BED
 (`track_regions_bed`); entries that cannot be found are listed on the page and
 in the log, never silently dropped. Values are the bigWig values as written:
-scaled by the library-size factors of `tracks/scale_factors.tsv` (spike-in
-normalization is not implemented). To plot other genes, add them to
+scaled by the factors in `tracks/scale_factors.tsv` (library size, or the
+spike-in when `spike_in.normalize` includes `'tracks'`). To plot other genes, add them to
 `track_loci` and run again: only this rule is redone.
 
 ```yaml
@@ -750,11 +794,71 @@ track_static_formats: []       # ['svg', 'pdf', 'png'] for publication-style fig
 
 The page is skipped (not an error) in analysis-only runs that have no
 bigWigs. TTpipe does not call enhancer RNAs; a BED file only says where to
-look. The page has been exercised only on synthetic data (including a
-headless Chrome run of its controls) until it is run on real pipeline output;
-see [Analysis](docs/analysis.qmd#stranded-signal).
+look. The page has run as a cluster job on real data: the 8-sample mouse
+test (13,419 expressed genes; Gapdh and Zfp143 reads about 97-99 % on their
+own strand) and the 10-sample human spike-in test (GAPDH and ACTB on their
+own strand); see [Analysis](docs/analysis.qmd#stranded-signal) and
+[Validation](docs/validation.qmd).
 
 ---
+
+## Spike-in normalization (optional, experimental)
+
+Library-size scaling assumes the total amount of new RNA is the same in every
+sample. When a treatment changes transcription globally, that assumption hides
+the change. A **spike-in** (RNA or cells added in a fixed amount to every
+sample, for example ERCC92 synthetic RNAs) gives an external reference
+instead. The module is **off by default**; with `enabled: false` the workflow
+is exactly the one without it.
+
+```yaml
+spike_in:
+  enabled: true
+  fasta: '/path/to/ERCC92.fa'          # spike-in sequences
+  gtf: '/path/to/ERCC92.gtf'           # optional; exon-only is fine
+  prefix: 'spike_'                     # added to spike-in contig and gene names
+  use_contigs: []                      # which spike-in contigs set the factors; [] = all
+  normalize: ['tracks', 'deseq2']      # what the spike-in scales; [] = only count
+  size_factor_method: 'total'          # or 'genes' (DESeq2 on the spike-in genes; needs gtf)
+```
+
+What happens when it is on:
+
+1. One combined host + spike-in reference is written (`reference/host_spike.*`),
+   with every spike-in name prefixed so host and spike-in reads can never be
+   confused. **The STAR index must be built from it**: set
+   `build_star_index: true` with a *new* `star_index` folder, or point
+   `star_index` at an index already built from the combined reference. A run
+   with an old index that lacks the spike-in contigs stops before any job with
+   a message saying so.
+2. Each final BAM's reads are counted per contig: `spike/spike_counts.tsv`
+   (host and spike-in read pairs, spike-in %) and `spike/spike_contig_counts.tsv`.
+3. `'tracks'`: the bigWig factor of each condition is
+   (largest spike-in pair count) / (this condition's). Without `'tracks'` the
+   usual library-size factor is used, but on host reads only.
+4. `'deseq2'` (with the analysis on): DESeq2 size factors come from the
+   spike-in (`total`: spike-in pairs / their geometric mean; `genes`: DESeq2's
+   median-of-ratios on the spike-in genes). They are set before `vst()`, so
+   the VST, PCA and normalized counts use them too, and are written to
+   `analysis/deseq2/deseq2_size_factors.tsv`.
+5. The usual count matrices hold host genes only; spike-in genes go to
+   `counts/counts_spike.txt`.
+
+**For TT-seq, choose `use_contigs` carefully.** TT-seq protocols often add a
+few spike-ins that carry 4sU and a few that do not. Only the labeled ones go
+through the 4sU purification like the nascent RNA, so `use_contigs` should
+list those (names as in the FASTA, without the prefix). Check
+`spike/spike_contig_counts.tsv` to see which spike-ins have reads at all.
+
+**Status.** The processing side has run on real human data (GSE218726, 10
+samples, 2 M read pairs each, GRCh38 + ERCC92): the combined reference, index,
+counting and spike-in track factors all worked, and ERCC genes stayed out of
+the host count matrices. With only 30 to 89 spike-in read pairs per sample in
+that subset, the factors were a test of the mechanics, not a usable
+normalization. DESeq2 with spike-in size factors, the `genes` method, and the
+QC report's display of spike-in numbers are not done or not run on real data.
+Details in [Validation](docs/validation.qmd) and
+[Configuration](docs/configuration.qmd).
 
 ## Pipeline files
 
@@ -775,6 +879,8 @@ see [Analysis](docs/analysis.qmd#stranded-signal).
 | `workflows/rules/explorer.smk` | Interactive results explorer |
 | `workflows/rules/stranded.smk` | Stranded signal page |
 | `workflows/rules/multiqc.smk` | Optional MultiQC page |
+| `workflows/rules/spike.smk` | Optional spike-in rules (included only when `spike_in.enabled`) |
+| `scripts/build_spike_reference.py`, `spike_summary.py`, `spike_size_factors.py` | Spike-in reference, counts and size factors |
 | `scripts/gene_info.py`, `make_count_matrix.py`, `scale_factors.py` | Processing helpers |
 | `scripts/run_deseq2.R`, `make_rnk.R`, `run_fgsea.R`, `make_sankey.R`, `tt_analysis_utils.R` | Analysis scripts |
 | `scripts/qc_summary.py`, `qc_report.py` | QC table and report |
@@ -795,7 +901,11 @@ see [Analysis](docs/analysis.qmd#stranded-signal).
 | `... values may only contain letters, digits ...` | A space or other character in `Name`, `Condition` or `Replicate` | Use letters, digits, `.`, `_`, `-` |
 | `config 'star_index' is empty` | No index given and `build_star_index` false | Set `star_index`, or set `build_star_index: true` |
 | `MissingInputException` for the STAR index `SA` file | `star_index` points at a folder with no index | Build it (`build_star_index: true`) or fix the path |
-| `reference_condition ... is not a Condition` | Typo, or the condition is not in the samplesheet | Match the samplesheet spelling and case |
+| `reference_condition ... is not a Condition` | Typo, or the condition is not in the samplesheet. It is checked even when `run_analysis: false` | Set it to one of your samplesheet conditions (spelling and case) |
+| `Failed to evaluate resources value '<your-slurm-account>'` | The profile still has the placeholder account (a dry run does not catch this) | Put your account in `profiles/<site>/config.yaml` |
+| `No module named '__future__'`, `Could not find platform independent libraries`, or `init_fs_encoding ... no codec search functions registered` | A conda env was built half-way (killed, or two builds at once) | Delete that `.snakemake/conda/<hash>_` folder and the package cache, rebuild once ([Troubleshooting](docs/troubleshooting.qmd)) |
+| `spike_in: the STAR index ... does not contain the spike-in contigs` | Spike-in on, but the index was built from the host genome only | `build_star_index: true` with a new `star_index` folder |
+| `zero spike-in read pairs` | No spike-in reads in a sample (not added, wrong FASTA, or `use_contigs`) | Check `spike/spike_contig_counts.tsv`; fix `fasta` / `use_contigs`, or `normalize: []` to only count |
 | Counts are zero or tiny; few genes found | FASTA and GTF chromosome names differ (`1` vs `chr1`) | Use a FASTA and GTF from the same source ([The reference](#the-reference)) |
 | QC report says most reads are on the wrong strand | `strandedness` is the other library type | Switch `dUTP` and `forward`, and rerun from `split_strands` ([Recipes](docs/recipes.qmd)) |
 | `sample names differ between the count matrix and the sample table` | Analysis-only matrix columns do not match the samplesheet `Name`s | Rename the columns or the `Name`s |

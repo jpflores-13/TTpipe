@@ -44,6 +44,7 @@ scale_factors: {}
 bigwig_bin_size: 50
 bigwig_extra: ''
 sample_tracks: false
+spike_in: {enabled: false, ...}
 htseq_feature: 'gene'
 htseq_id_attribute: 'gene_id'
 htseq_nonunique: 'all'
@@ -101,14 +102,15 @@ no counts anywhere, it stops with a message asking for `analysis_counts`.
 | `genome_fasta` | placeholder path (mouse) | Genome FASTA; read only when building the STAR index. **Must match the GTF's chromosome names** |
 | `gtf` | placeholder path (mouse) | Unzipped GTF: used by the STAR index, HTSeq and the gene table. Needs `gene` lines with a `gene_id` attribute ([Other genomes](setup.qmd#other-genomes)) |
 | `star_index` | placeholder path | STAR genome directory. If empty and `build_star_index` is true: `<outputDir>/reference/star_index`. If empty and the index is not being built, the workflow stops |
-| `build_star_index` | `false` | `true`: build the index from `genome_fasta` and `gtf` (once; about 29 GB of memory measured on a mouse genome, more for larger genomes) |
+| `build_star_index` | `false` | `true`: build the index from `genome_fasta` and `gtf` (once; about 29 GB of memory measured on a mouse genome, 62.5 GB on human GRCh38 plus ERCC92) |
 | `sjdb_overhang` | `100` | `STAR --sjdbOverhang` at index build: read length minus 1. Passed explicitly (the guide uses STAR's default, 100) |
 
 The defaults are mouse, but no code is mouse-specific. For human or another
 organism, change `genome`, `genome_fasta`, `gtf`, `star_index`,
 `sjdb_overhang` and `gsea_collections`; the keys and caveats are in
-[Setup: Other genomes](setup.qmd#other-genomes). Only mouse has been run on
-real data.
+[Setup: Other genomes](setup.qmd#other-genomes). Mouse has been run on real
+data end to end; human (GRCh38, GENCODE v44) has been run on real data for
+processing only (no DESeq2 or GSEA).
 
 ## Notifications
 
@@ -149,6 +151,76 @@ added.
 
 Mapped pairs are BAM records divided by two, on the replicate-merged all-reads
 BAMs. `bamCoverage` gets `--scaleFactor` and nothing else for normalisation.
+With the spike-in module on, the factors are computed differently (next section).
+
+## Spike-in normalization (optional, experimental) {#spike-in}
+
+Off by default. With `spike_in.enabled: false` nothing changes: the workflow has
+the same rules, jobs and commands as without the block. The module is
+experimental: it is covered by unit tests and dry runs and has been run once on
+real data (human plus ERCC92, processing only, `normalize: ['tracks']`). DESeq2
+with spike-in size factors and `size_factor_method: 'genes'` have **not** been
+run on real data ([Differential expression and GSEA](analysis.qmd#spike-in)).
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `spike_in.enabled` | `false` | Turn the module on. Needs `run_processing: true` (the spike-in counts come from this run's BAMs) |
+| `spike_in.fasta` | `''` | Spike-in sequences, for example `ERCC92.fa` (plain or `.gz`). Required when enabled |
+| `spike_in.gtf` | `''` | Optional spike-in annotation, for example `ERCC92.gtf`. An exon-only GTF is fine: a `gene` line is added per `gene_id`. Needed for `counts/counts_spike.txt` and for `size_factor_method: 'genes'` |
+| `spike_in.prefix` | `'spike_'` | Added to every spike-in contig name, `gene_id` and `transcript_id` (`ERCC-00002` becomes `spike_ERCC-00002`). No host contig may start with it; the run stops if one does |
+| `spike_in.use_contigs` | `[]` | Spike-in contigs (names as in the FASTA, without the prefix) whose reads set the factors. `[]` = all |
+| `spike_in.normalize` | `['tracks', 'deseq2']` | `tracks`: bigWig factors from spike-in pairs. `deseq2`: DESeq2 size factors from the spike-in (only when `run_analysis` is true). `[]` = only count the spike-in |
+| `spike_in.size_factor_method` | `'total'` | `total`: size factor = spike-in pairs / their geometric mean over samples. `genes`: DESeq2 median-of-ratios on the spike-in genes (`controlGenes`; needs `gtf`) |
+| `spike_in.min_pairs` | `10000` | Reserved for a QC warning. Checked to be a number >= 0; not used yet |
+
+An example for ERCC92:
+
+```yaml
+spike_in:
+  enabled: true
+  fasta: '/path/to/ERCC92.fa'
+  gtf: '/path/to/ERCC92.gtf'
+  prefix: 'spike_'
+  use_contigs: []               # or the labeled spike-ins only (see below)
+  normalize: ['tracks', 'deseq2']
+  size_factor_method: 'total'
+star_index: '/path/to/GRCh38_ERCC_STARgenome'   # a NEW directory
+build_star_index: true
+```
+
+**The STAR index must contain the prefixed spike-in contigs.** TTpipe writes one
+combined host plus spike-in reference (`reference/host_spike.fa`, deleted once
+the index is built, and `reference/host_spike.gtf`, kept for HTSeq). Either set
+`build_star_index: true` with a **new** `star_index` directory, so the index is
+built from the combined reference, or point `star_index` at an index already
+built from that combined reference. An existing host-only index with
+`build_star_index: false` is refused when the workflow is parsed, with a message.
+
+What changes when it is on:
+
+- HTSeq counts on the combined GTF. `counts_forward.txt`, `counts_reverse.txt`
+  and `counts_deseq2.txt` hold host genes only, in the usual format; the
+  spike-in genes (forward plus reverse) go to `counts/counts_spike.txt` (only
+  with `spike_in.gtf`).
+- `samtools idxstats` of each final (MAPQ-filtered, deduplicated) BAM gives
+  `spike/spike_counts.tsv` (`sample`, `condition`, `host_pairs`,
+  `spike_pairs_all`, `spike_pairs_used`, `spike_pct`) and
+  `spike/spike_contig_counts.tsv` (pairs per spike-in contig and sample). Pairs
+  are mapped records divided by two; `spike_pairs_used` counts only
+  `use_contigs`.
+- Track factors with `tracks`: (largest `spike_pairs_used` over conditions,
+  replicates summed) / this condition's, source `spike-in`. Without `tracks`:
+  the usual library-size factor, but on host pairs only. `scale_factors`
+  overrides still win. `tracks/scale_factors.tsv` gets two extra columns,
+  `host_pairs` and `spike_pairs`. Per-sample tracks use the same basis.
+- DESeq2 with `deseq2`: see [Differential expression and GSEA](analysis.qmd#spike-in).
+
+**TT-seq spike-in mixes.** TT-seq kits often add a few 4sU-labeled and a few
+unlabeled spike-in RNAs. Only the labeled ones go through the 4sU purification,
+so `use_contigs` should list the labeled spike-ins.
+Which contigs those are comes from your protocol, not from the reads.
+
+A step-by-step recipe is in [Recipes](recipes.qmd#use-a-spike-in).
 
 ## Stranded signal plots {#stranded-signal-plots}
 
@@ -200,7 +272,7 @@ options stay at HTSeq's defaults (for example `--mode union`).
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `reference_condition` | `DMSO` (in the shipped file; code default: the first condition) | Control `Condition`; the base level and the default reference |
+| `reference_condition` | `DMSO` (in the shipped file; code default: the first condition) | Control `Condition`; the base level and the default reference. Checked against the samplesheet even when `run_analysis` is false, so set it to one of your conditions |
 | `condition_order` | `[]` | Order of conditions in plots and the Sankey; must list exactly the samplesheet conditions. Empty = order of appearance |
 | `comparisons` | `[]` | `[treatment, reference]` pairs. Empty = every other condition against `reference_condition`. Result names: `<treatment>_vs_<reference>` |
 | `design` | `~ condition + replicate` | DESeq2 design. Only `condition` and `replicate` are available; `condition` is required |

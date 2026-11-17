@@ -132,7 +132,10 @@ panel shows it).
 
 **Cause.** The per-rule memory in the profile is a starting value. On a
 mouse genome STAR alignment measured about 26 GB and the index build about
-29 GB; larger genomes need more and have not been measured.
+29 GB. On human (GRCh38 with ERCC92) alignment measured about 29 GB and the
+index build 62.5 GB, more than the 48000 MB most profiles ship for
+`star_index`; the `pioneer` profile now asks for 72000. Other genomes have not
+been measured.
 
 **Fix.** Raise `mem_mb` for `star_align` and `star_index` in your profile's
 `config.yaml` (`set-resources:`), keeping a margin, and resubmit. Finished
@@ -140,6 +143,49 @@ jobs are kept. Check actual use with `seff <jobid>` or `sacct` (see
 [Cluster reference](cluster.qmd#tuning-resources)). On `profiles/local` the
 global `mem_mb=64000` limit also decides how many jobs run at once; lower or
 raise it to match your machine.
+
+## A conda environment is broken: `No module named '__future__'` {#broken-conda-env}
+
+**Symptom.** A job fails right at the start, before the tool does anything,
+with one of:
+
+- `ModuleNotFoundError: No module named '__future__'`
+- `Could not find platform independent libraries <prefix>`
+- `init_fs_encoding: failed to get the Python codec of the filesystem encoding`
+  (followed by `no codec search functions registered`)
+
+**Cause.** The environment's Python is missing standard-library files because
+its build was interrupted or overlapped with another one. Seen on the real
+runs: a login-node build was killed partway, and two builds (or a build and a
+job) used the same `.snakemake/conda` folder and package cache at once. A job
+that starts while its environment is still being written fails the same way.
+
+**Fix.** Make sure nothing else is building or running, then delete the broken
+environment folders under `.snakemake/conda` (the folder you launch from) and
+the package cache (the `CONDA_PKGS_DIRS` folder), and build once:
+
+```bash
+sbatch TTpipe.sh --configfile config/mine.yaml --conda-create-envs-only
+```
+
+Wait for that job to finish before submitting the real run. Run only one
+environment build at a time against the same folder and cache. Which folder
+belongs to which environment is not obvious from its name; if in doubt, delete
+all of `.snakemake/conda` (the environments are rebuilt, finished results are
+kept). See [Cluster reference](cluster.qmd#building-environments).
+
+## `Failed to evaluate resources value '<your-slurm-account>'`
+
+**Symptom.** The launcher job ends within a minute of starting, and its log
+contains `Failed to evaluate resources value '<your-slurm-account>'`. A dry
+run (`bash TTpipe.sh -n`) passed.
+
+**Cause.** The profile still contains the `slurm_account: <your-slurm-account>`
+placeholder (`pioneer`, `longleaf`). The dry run does not evaluate it, so it
+does not catch this. Seen on a fresh clone.
+
+**Fix.** As in the next entry: put your account into `slurm_account:` in the
+profile's `config.yaml`, or delete the line if your cluster has no accounts.
 
 ## SLURM rejects the submission and mentions the account
 
@@ -154,6 +200,52 @@ association.
 into `slurm_account:` in the profile's `config.yaml`; delete the line if your
 cluster does not use accounts. `profiles/slurm-template/config.yaml` explains
 the same. Also check `slurm_partition` against `sinfo -s`.
+
+## `reference_condition` error on a processing-only run
+
+**Symptom.** The workflow stops at startup with a message that
+`reference_condition` is not one of the samplesheet's conditions, although
+`run_analysis: false`.
+
+**Cause.** `reference_condition` is checked even when no analysis is run. The
+shipped config says `'DMSO'`, so any samplesheet without a `DMSO` condition
+fails. Seen on the human test; not changed in the code.
+
+**Fix.** Set `reference_condition` to one of the conditions in your
+samplesheet. With `run_analysis: false` the choice has no effect.
+
+## Spike-in errors
+
+The spike-in module is experimental and off by default
+(`spike_in.enabled: false`); see [Validation status](validation.qmd) for what
+of it has been run. Its own checks stop the run with a message in three cases.
+
+**The STAR index lacks the spike-in contigs.** *Symptom:* with
+`spike_in.enabled: true` and `build_star_index: false`, the run stops at
+startup with `spike_in: the STAR index '...' does not contain the spike-in
+contigs (e.g. [...]) and build_star_index is false`. *Cause:* the
+index was built from the host genome alone; the spike-in reads need the
+combined host + spike-in reference. *Fix:* set `build_star_index: true` with a
+**new** `star_index` folder (it is built from the combined reference), or point
+`star_index` at an index already built from the combined reference. Do not
+overwrite your host-only index.
+
+**A sample has zero spike-in pairs.** *Symptom:* `spike_size_factors` fails
+with `sample(s) [...] have zero spike-in read pairs (spike_pairs_used): the
+spike-in size factor is undefined`. *Cause:* a DESeq2 size factor from
+spike-in reads cannot be computed for a sample without them. Either no
+spike-in was added to that sample, or none of the contigs in `use_contigs`
+received reads in it (names that are not in the FASTA at all are already
+refused at startup). *Fix:* look at `spike/spike_contig_counts.tsv` to see
+which contigs received reads in each sample, and adjust `use_contigs`. If a
+sample truly has none, spike-in size factors are not possible for it; remove
+`deseq2` from `normalize`, or set `normalize: []` to only count.
+
+**A host contig already starts with the prefix.** *Symptom:* `spike_reference`
+fails with `the host genome has contig(s) whose name starts with the spike-in
+prefix 'spike_'` (or the same for seqnames in the host GTF). *Cause:* TTpipe tells spike-in from host contigs by
+the prefix (`spike_` by default), so it must not occur in the host genome.
+*Fix:* choose another `spike_in.prefix`.
 
 ## "The workflow is locked" after an interrupted run
 
@@ -182,8 +274,12 @@ it and downloads the packages then. Some clusters allow internet access on the
 login node only. Which nodes have access is a property of your site (general
 knowledge); ask your cluster's support if unsure.
 
-**Fix.** Build all environments once, on a machine that has internet access
-(for example the login node), before submitting the real run:
+**Fix.** Build all environments once, on a machine that has internet access,
+before submitting the real run. If your compute nodes do have internet access
+(Pioneer's do), building in a SLURM job is safer than on the login node, where
+a long build can be killed; see
+[Cluster reference](cluster.qmd#building-environments). Otherwise use the
+login node:
 
 ```bash
 bash TTpipe.sh --conda-create-envs-only

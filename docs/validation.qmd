@@ -13,22 +13,33 @@ plotly and pytest (no conda, no STAR). It covers:
 
 - Snakemake **dry runs** against tiny placeholder inputs (full, processing-only,
   analysis-only, trimming, per-sample tracks, GSEA branch, bad configs rejected,
-  the FASTA/GTF chromosome-name check);
+  the FASTA/GTF chromosome-name check, and the spike-in module switched off,
+  on with each size-factor method, and on with an index that lacks the
+  spike-in contigs);
 - a regression test that really runs the sample-table rule and checks that editing
   the samplesheet regenerates it (see the bug found below);
 - the Python scripts (gene table, count matrix, scale factors, QC summary, QC
-  report, results explorer) on **synthetic** inputs, and the results explorer's
-  controls driven in headless Chrome on synthetic data;
+  report, results explorer, stranded signal page) on **synthetic** inputs, and the
+  results explorer's controls driven in headless Chrome on synthetic data;
+- the spike-in scripts (`tests/test_spike_in.py`): the combined host + spike-in
+  reference (prefixing, the `gene` lines added for an exon-only spike-in GTF, the
+  refusal of a host contig that already carries the prefix), spike-in pair counts,
+  track factors on the spike-in and host bases, per-sample factors, DESeq2 size
+  factors with the `total` method and the error for a sample with zero spike-in
+  pairs. The fixtures `tests/dryrun/spike.fa` and `spike.gtf` mirror the layout of
+  ERCC92 (exon-only, `gene_id` equal to the contig name); the real ERCC files are
+  not in the repository;
 - the pure-logic parts of the R scripts (ranking, classification, design checks);
 - that the rule-graph diagrams in the docs are current.
 
 At the last full run, 105 tests passed with R available, and 92 passed with 13
 skipped (the R-script tests) on Python 3.11 without R, which is how the GitHub CI
-runner behaves. These tests show the workflow parses and that the scripts behave on
+runner behaves. That count predates the stranded-signal and spike-in tests;
+those tests were later run and passed on the cluster. These tests show the workflow parses and that the scripts behave on
 made-up inputs. They do **not** show that STAR, DESeq2 or any other tool gives good
 results.
 
-## Real-data test (two rounds, one cluster)
+## Real-data test: mouse (two rounds, one cluster)
 
 **What was run.** Public TT-seq data from GEO series GSE260914 (mouse ESC, ZFP143
 dTAG degron). Only the **first 3 million read pairs** of each run were used (44 nt
@@ -109,21 +120,140 @@ used roughly 1.2 GB or less. Run times are for 3-million-pair inputs only and do
 extrapolate to full-depth samples; the per-rule values in the profiles remain
 starting values.
 
+**Stranded signal page (a later round on the same data).** The `stranded_signal`
+rule ran as a real cluster job on the 8-sample mouse output and took about 4
+minutes. It counted 13,419 expressed genes (count >= 10 in at least 2 samples). The
+protein-coding metagene used 11,348 genes (11,345 in the TSS view, 11,294 in the
+gene-body view); the strand table listed 13,837 genes with at least 50 reads; all 19
+locus tracks were found; the page was 6.0 MB. Known genes came out on the expected
+strand: Gapdh (minus strand) had 355 to 391 reads on the reverse strand against 6 to
+13 on the forward, and Zfp143 (plus strand) 200 to 212 on the forward against 1 to 3
+on the reverse, about 97 to 99 % sense.
+
+What was found and fixed: the **lncRNA metagene group was empty** on this data.
+GENCODE vM25 still labels mouse long non-coding genes with the older types
+(`lincRNA`, `antisense` and so on) rather than `lncRNA`. The group now also takes
+those older GENCODE types and its label lists the ones it included (see
+[Configuration](configuration.qmd)). After the fix the lncRNA metagene used 1,389
+genes (1,389 in the TSS view, 1,363 in the gene-body view). The first attempt of the
+job failed for an unrelated reason, a conda environment that was still being written
+by an overlapping build (see [Operational problems](#operational-problems) below);
+the rerun was fine.
+
+## Real-data test: human with ERCC spike-in (processing only)
+
+**What was run.** Public chrTT-seq data from GEO series GSE218726 (human MCF-7
+cells): 10 samples of chromatin-associated ("Assoc") and chromatin-released
+("Released") nascent RNA after a 4sU pulse-chase of 0, 5, 10, 15 and 20 minutes, one
+sample per condition (no replicates). Only the **first 2 million read pairs** of each
+run were used (75 nt reads). The libraries are TruSeq Stranded mRNA (dUTP), and
+`strandedness: dUTP` was confirmed by the strand check below. Per GEO, the samples
+contain three 4sU-labeled and three unlabeled ERCC spike-in RNAs.
+
+The reference was the GRCh38 primary assembly (GENCODE release 44 FASTA, MD5
+checked) with the GENCODE v44 annotation, plus ERCC92 (92 contigs, exon-only GTF).
+STAR 2.7.9a, `sjdb_overhang: 100`. The config had `run_processing: true`,
+`run_analysis: false`, `spike_in.enabled: true`, `normalize: ['tracks']` and
+`use_contigs: []` (all spike-in contigs). The run used the `pioneer` profile on SLURM.
+
+**What worked on real data.** The combined human + ERCC STAR index was built by a
+standalone job with the same command as the pipeline's `star_index` rule. The
+workflow itself, 170 jobs, all completed in about 34 minutes of wall time, and wrote
+the stranded signal page, the QC report and the MultiQC report. Known genes came out
+on the expected strand, so the dUTP handling is right on human: GAPDH (plus strand)
+had 23, 48 and 36 forward against 2, 1 and 5 reverse counts in the first three
+samples; ACTB (minus strand) had 1, 3 and 7 forward against 52, 107 and 105 reverse.
+The spike-in genes stayed out of the host matrices: `counts_deseq2.txt` contains no
+`spike_` gene id, and `counts_spike.txt` has 92 rows, 6 of them non-zero.
+
+**Observed values on this subset** (illustrative of the report, not a quality
+statement about the data):
+
+| Quantity | Observed range over 10 samples |
+|---|---|
+| Uniquely mapped (STAR) | 26.3 to 52.8 % |
+| Multi-mapped | 44.6 to 71.2 % |
+| Unmapped, too short | 2.5 to 6.6 % |
+| Final pairs, % of input | 16.1 to 39.3 % |
+| Duplication (Picard) | 19.5 to 38.6 % |
+| Reads on the gene strand (HTSeq) | 86.3 to 90.7 % |
+| rRNA genes, % of counted reads | 0.3 to 19.9 % |
+| Host pairs per sample (final BAM) | 322,245 to 785,168 |
+| Spike-in pairs per sample (final BAM) | 30 to 89 (0.006 to 0.023 %) |
+| Track scale factors (spike-in basis) | 1.00 (Released_10min, 89 pairs) to 2.97 (Assoc_20min, 30 pairs) |
+
+High multi-mapping is expected for chromatin-associated RNA with rRNA and repeat
+content; nothing more is read into it here. The factor arithmetic checks out by hand
+(89 / 30 = 2.97).
+
+**The spike-in factors are a test of the mechanics, not usable normalization.**
+With 30 to 89 spike-in pairs per sample, counting (Poisson) noise alone is about 10
+to 18 %. Full-depth data would have roughly 10 to 20 times more spike-in reads.
+
+**Which spike-ins to use.** TT-seq kits often add a few 4sU-labeled and a few
+unlabeled spike-in RNAs. Only the labeled ones go through the 4sU purification, so
+`use_contigs` should list the labeled ones. In this data exactly six ERCC contigs
+received reads (ERCC-00002, ERCC-00043, ERCC-00092, ERCC-00136, ERCC-00145,
+ERCC-00170). Which three of them were labeled was **not** determined (it should be in
+the methods of the paper, PMID 37857083); this test used all six.
+
+**Measured resource use** (Snakemake benchmark files and SLURM accounting): the
+human + ERCC STAR index build took 34 minutes on 16 threads with a peak of 62.5 GB
+(65,525,800 KB MaxRSS), against about 29 GB for mouse; the `pioneer` profile's
+`star_index` memory was raised from 48000 to 72000 MB because of it. STAR alignment
+peaked at about 29.0 GB per sample. Every other rule used 2.5 GB or less
+(`stranded_signal` 2.4 GB, `mark_duplicates` about 1.4 GB). As with mouse, the run
+times are for subsampled inputs only.
+
+## Operational problems found {#operational-problems}
+
+These came up during the later rounds. None is a bug in the analysis; each is
+described with its fix in [Troubleshooting](troubleshooting.qmd) or
+[Cluster](cluster.qmd).
+
+- **Overlapping conda builds broke environments.** Building environments on the
+  login node was killed partway, and two builds (or a build and a running job) used
+  the same `.snakemake/conda` folder and package cache at once. The result was
+  environments with missing standard-library files, which failed with
+  `No module named '__future__'`, `Could not find platform independent libraries`
+  or `init_fs_encoding: failed to get the Python codec`. Deleting the broken
+  environment folders and the package cache and rebuilding once fixed it. On
+  Pioneer the compute nodes have internet access, so all 7 environments were then
+  built in one SLURM job (69 minutes, 8 cores, 32 GB).
+- **The placeholder account fails the launcher, not the dry run.** With
+  `slurm_account: <your-slurm-account>` still in the profile, `bash TTpipe.sh -n`
+  passes, but the submitted launcher fails within a minute with
+  `Failed to evaluate resources value '<your-slurm-account>'`.
+- **`reference_condition` is checked even with `run_analysis: false`.** The shipped
+  config says `'DMSO'`, so a samplesheet without a DMSO condition stops at startup
+  even for a processing-only run. Setting `reference_condition` to one of the
+  samplesheet's conditions avoids it. This is not changed in the code.
+
 ## What has not been run
 
-- **Full-depth data.** The real samples have roughly 30 to 48 million pairs; none were run.
+- **Full-depth data.** The mouse samples have roughly 30 to 48 million pairs; no
+  sample, mouse or human, was run at full depth.
 - **The explorer in browsers other than Chrome**, with real mouse hover, or an actual CSV
   file download (the CSV text is generated and checked, but the download itself was not triggered).
 - **Optional switches** on real data: `trim: true` (fastp), `strandedness: forward`,
   `count_strand: sense`, `sample_tracks: true`, `analysis_counts`.
-- **Other organisms.** Only mouse (mm10, GENCODE vM25) was run; human is expected to
-  work (see [Setup](setup.qmd)) but is untested.
+- **Analysis on human.** Human (GRCh38, GENCODE v44) was run for processing only;
+  DESeq2, fgsea, the Sankey and the results explorer have not been run on human data.
+- **Other organisms.** Only mouse and human have been run.
 - **Other clusters and platforms.** Only one cluster was used. STAR 2.7.9a, samtools
   1.12 and HTSeq 0.13.5 have no osx-arm64 builds, so a laptop run on Apple silicon was not attempted.
-- **Spike-in, labeled-vs-total, lncRNA/eRNA discovery, tracks panel and rate analyses**
-  do not exist in this version.
+- **Parts of the spike-in module.** The module is experimental and off by default.
+  Spike-in counting and track factors were run on real data (above), but DESeq2 with
+  spike-in size factors (`normalize` containing `deseq2`), `size_factor_method:
+  'genes'`, and spike-in data with replicates have not been. The QC report does not
+  show spike-in numbers yet (they are in `spike/spike_counts.tsv`), and `min_pairs`
+  is not used.
+- **Labeled-vs-total, eRNA discovery, tracks panel and rate analyses** do not exist
+  in this version.
 
-## Repeating the real-data test
+## Repeating the real-data tests
+
+Mouse:
 
 1. List the TT-seq runs of GSE260914 with the ENA read-only API (filter
    `study_alias="GSE260914"`; select runs whose title starts with `TTseq_`).
@@ -134,3 +264,12 @@ starting values.
    and `sjdb_overhang` to read length minus 1.
 4. Build the environments on a node with internet
    (`bash TTpipe.sh --conda-create-envs-only`), then submit `TTpipe.sh`.
+
+Human with ERCC spike-in: list the runs of GSE218726 with the ENA read-only API (`study_alias="GSE218726"`), take the first
+2 million pairs per mate (`head -n 8000000`), download the GENCODE release 44 GRCh38
+primary-assembly FASTA and v44 annotation GTF plus ERCC92 (`ERCC92.fa`,
+`ERCC92.gtf`), and set `spike_in.enabled: true` with `fasta` and `gtf` pointing at
+the ERCC files, `build_star_index: true` with a new `star_index` folder,
+`sjdb_overhang: 100`, `run_analysis: false` and `reference_condition` set to one of
+your conditions. The index build peaked at 62.5 GB, so give `star_index` more than
+that (the `pioneer` profile now asks for 72 GB).

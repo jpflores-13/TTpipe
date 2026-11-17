@@ -2,9 +2,9 @@
 
 Each recipe below is a change to `config/TTpipeConfig.yaml` (or a command), with
 what it does and what to watch out for. After any change, run
-`bash TTpipe.sh -n` first: the dry run lists what Snakemake will redo. None of
-the recipes has been run on real data by the author; they follow the code
-([Validation status](validation.qmd)).
+`bash TTpipe.sh -n` first: the dry run lists what Snakemake will redo. Unless a
+recipe says otherwise, it has not been run on real data by the author; the
+recipes follow the code ([Validation status](validation.qmd)).
 
 ## Analysis-only run on an existing count matrix
 
@@ -216,6 +216,75 @@ read. With `build_star_index: false`, `star_index` must already be an index. If
 `<outputDir>/reference/star_index`. `sjdb_overhang` is the read length minus 1
 and matters only when building.
 
+## Use a spike-in (e.g. ERCC92) {#use-a-spike-in}
+
+For libraries that contain a spike-in RNA. The module is **optional and
+experimental**; the keys are in [Configuration](configuration.qmd#spike-in).
+
+1. **Get the spike-in FASTA and GTF**, for example `ERCC92.fa` and `ERCC92.gtf`
+   from the supplier (they are not in the repository). The FASTA may be plain or
+   `.gz`. The GTF is optional, but without it there is no
+   `counts/counts_spike.txt` and no `size_factor_method: 'genes'`. An exon-only
+   GTF such as `ERCC92.gtf` is fine.
+2. **Set the `spike_in` keys:**
+
+   ```yaml
+   spike_in:
+     enabled: true
+     fasta: '/path/to/ERCC92.fa'
+     gtf: '/path/to/ERCC92.gtf'
+     prefix: 'spike_'
+     use_contigs: []
+     normalize: ['tracks', 'deseq2']
+     size_factor_method: 'total'
+   ```
+
+3. **Give STAR an index that contains the spike-in.** Either a new directory
+   that TTpipe builds from the combined host plus spike-in reference:
+
+   ```yaml
+   star_index: '/path/to/GRCh38_ERCC_STARgenome'   # new, not your host-only index
+   build_star_index: true
+   ```
+
+   or `build_star_index: false` with `star_index` pointing at an index already
+   built from that combined reference (with the prefixed contig names). A
+   host-only index is refused when the workflow is parsed. The build needs more
+   memory than the host alone: 62.5 GB was measured for human plus ERCC92
+   (mouse alone: about 29 GB).
+4. **Choose `normalize` and `use_contigs`.** `['tracks']` sets only the bigWig
+   factors; `['tracks', 'deseq2']` also the DESeq2 size factors (when
+   `run_analysis` is true); `[]` only counts the spike-in. In `use_contigs`,
+   list the spike-ins whose reads should set the factors, by their FASTA names
+   (for example `['ERCC-00002', 'ERCC-00043']`). In TT-seq, where a mix of
+   4sU-labeled and unlabeled spike-ins is common, list the labeled ones: only
+   they go through the 4sU purification. Which ones are labeled comes from your
+   protocol.
+5. **Dry run:** `bash TTpipe.sh -n`. It should list `spike_reference`, one
+   `spike_idxstats` per sample and `spike_summary`, and `spike_size_factors`
+   when `deseq2` is in `normalize` and the analysis runs (and `star_index` when
+   the index is built).
+6. **Run**, then check the counts before using any factor:
+   - `spike/spike_counts.tsv`: per sample `host_pairs`, `spike_pairs_all`,
+     `spike_pairs_used` (only `use_contigs`) and `spike_pct`.
+   - `spike/spike_contig_counts.tsv`: pairs per spike-in contig and sample.
+     It shows which spike-ins actually received reads.
+   - `tracks/scale_factors.tsv`: source `spike-in` with `tracks`, plus the
+     `host_pairs` and `spike_pairs` columns.
+   - With `deseq2`: `spike/size_factors.tsv` (method `total`) or
+     `spike/control_genes.txt` (method `genes`), and
+     `analysis/deseq2/deseq2_size_factors.tsv` with the factors DESeq2 used.
+   - `counts/counts_spike.txt` holds the spike-in genes; the usual count
+     matrices hold host genes only.
+
+What has been run: this recipe with `normalize: ['tracks']` and
+`use_contigs: []` on a human dataset with ERCC92 (2 million read pairs per
+sample, processing only). Only six ERCC contigs received reads, 30 to 89 pairs
+per sample, which is far too few for usable factors (Poisson noise alone is
+about 10 to 18 %); it tested the mechanics. DESeq2 with spike-in factors and
+`size_factor_method: 'genes'` have not been run on real data. The QC report
+does not show spike-in numbers yet.
+
 ## A different organism or annotation
 
 Everything genome-specific is in these keys:
@@ -231,7 +300,8 @@ The FASTA and the GTF must come from the same source. `gene_info.py` reads
 `gene_name` and `gene_type` (GENCODE) or `gene_biotype` (Ensembl) from the GTF;
 rRNA % in the QC report needs genes typed `rRNA` or `Mt_rRNA`. TTpipe was set up
 and its defaults chosen for mouse mm10 and GENCODE vM25; other genomes follow the
-same code path but have not been tried.
+same code path. Human (GRCh38, GENCODE v44) has been run on real data for
+processing only (no DESeq2 or GSEA); other genomes have not been tried.
 
 ## Turning optional outputs off
 
@@ -282,9 +352,11 @@ average over your regions. Nascent enhancer transcripts are short and weak, so
 a visible signal needs enough sequencing depth, a region list you trust, and
 normally a comparison with a control region set; a BED of regions with no
 signal gives a flat line, not a negative result about enhancers in general.
-The signal is normalized by library size only (no spike-in).
+The signal is normalized by library size, unless the optional, experimental
+spike-in module sets the track factors ([Use a spike-in](#use-a-spike-in)).
 
-The page has been run only on synthetic data so far.
+The page has been run on real data (mouse, and human processing only) as well
+as synthetic data, but not on full-depth samples.
 
 ## Changing tool settings
 

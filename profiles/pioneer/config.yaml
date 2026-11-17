@@ -18,7 +18,7 @@ default-resources:
 ## NOT benchmarks of TTpipe: check each job's memory after a first run (seff / sacct) and adjust.
 ## STAR alignment used about 26 GB for the mouse genome in a test run; `star_index` needed about 29 GB in the mouse test run.
 ## Human GRCh38 (GENCODE v44) + ERCC92: `star_index` peaked at 62.5 GB (34 min, 16 threads), so it is set to 72 GB below.
-## Human alignment is not measured yet; 40 GB is a starting value (STAR loads the ~30 GB human genome).
+## Human alignment (GRCh38 + ERCC92) peaked at about 29 GB per sample, so the 40 GB below has headroom.
 set-threads:
   fastqc: 4
   fastp: 8

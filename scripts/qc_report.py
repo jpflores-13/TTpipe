@@ -18,8 +18,9 @@ Thresholds come from `qc_thresholds` in the config (same semantics as MicroCPipe
 `fail` and warns below `warn`; lower_is_better the reverse; a value exactly on an edge is not penalised).
 
 The report never fabricates numbers: a section without data is replaced by a note, and every skipped or
-partial section is listed with its reason near the top. Things TTpipe does not measure (spike-in fraction,
-labeled-vs-total enrichment, synthesis/degradation rates) are listed in a "Not assessed" box, not drawn.
+partial section is listed with its reason near the top. Things the report does not show (spike-in fraction,
+which the optional spike-in module writes to spike/spike_counts.tsv; labeled-vs-total enrichment;
+synthesis/degradation rates) are listed in a "Not assessed" box, not drawn.
 """
 from __future__ import annotations
 
@@ -81,7 +82,7 @@ STATUS_SYMBOL = {"pass": "✓", "warn": "!", "fail": "✕", "na": "–"}
 PALETTE = ["#0072B2", "#E69F00", "#009E73", "#CC79A7", "#56B4E9", "#D55E00", "#F0E442", "#999999"]
 
 NOT_ASSESSED = [
-    ("Spike-in fraction", "this version has no spike-in RNA or spike-in reference, so no spike-in normalisation or fraction is computed."),
+    ("Spike-in fraction", "not shown in this report. With the optional spike-in module on (spike_in.enabled), the spike-in read pairs and percentage per sample are in spike/spike_counts.tsv and per spike-in contig in spike/spike_contig_counts.tsv."),
     ("Labeled-vs-total enrichment", "this version has no total / input RNA samples to compare the labeled (4sU) RNA against."),
     ("Synthesis and degradation rates", "rates need total and labeled RNA plus spike-in normalisation, none of which are modelled here."),
 ]

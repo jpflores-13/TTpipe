@@ -33,9 +33,14 @@ The scale factors the guide quotes come from the authors' repository.
   not benchmarks.
 - The automated tests (pytest, CI) use synthetic and placeholder files and
   Snakemake dry runs. They run no aligner and no statistics on real data.
+- Real data, subsampled, on one SLURM cluster: mouse has been run end to end;
+  human only through processing (no DESeq2 or GSEA). No full-depth run.
+- The optional spike-in normalization is **experimental** and off by default.
+  Spike-in counting and track factors have run on real data with very few
+  spike-in reads; DESeq2 with spike-in size factors has not.
 
-**Validation status.** A real-data test on a cluster is in progress. What has
-and has not been observed is recorded in [Validation status](validation.qmd).
+**Validation status.** What has and has not been observed is recorded in
+[Validation status](validation.qmd).
 :::
 
 ::: {.callout-note}

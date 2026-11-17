@@ -133,7 +133,9 @@ found; see the paper.
 TTpipe handles the left-hand differences in these ways: it counts whole genes
 (next section), it splits every library by strand, and it states plainly what
 it cannot normalise (see [What the numbers do not tell
-you](#what-the-numbers-do-not-tell-you)).
+you](#what-the-numbers-do-not-tell-you)). A spike-in can be used for
+normalisation through an optional, experimental module that is off by default
+([Configuration](configuration.qmd#spike-in)).
 
 ## Why introns count
 
@@ -245,19 +247,25 @@ does not measure.
 
 The report has a box titled "Not assessed by this pipeline". This version has:
 
-- **No spike-in.** Without a spike-in RNA added in known amounts, library-size
-  and DESeq2 normalisation assume that most genes do not change. If a
-  treatment lowers (or raises) nascent transcription everywhere, that global
-  shift cannot be seen from these data alone. The bigWig scale factors only
-  correct for sequencing depth.
+- **No spike-in by default.** Without a spike-in RNA added in known amounts,
+  library-size and DESeq2 normalisation assume that most genes do not change.
+  If a treatment lowers (or raises) nascent transcription everywhere, that
+  global shift cannot be seen from these data alone, and the bigWig scale
+  factors only correct for sequencing depth. If your libraries contain a
+  spike-in, the optional spike-in module can set the track factors and the
+  DESeq2 size factors from it. It is experimental: its DESeq2 part has not been
+  run on real data, and the report does not show spike-in numbers yet
+  ([Differential expression and GSEA](analysis.qmd#spike-in)).
 - **No labeled-versus-total comparison.** There are no total or input RNA
   samples, so labeling efficiency and contamination with unlabeled RNA are not
   measured.
 - **No synthesis or degradation rates.** Those need total and labeled RNA and
-  spike-in normalisation, none of which are modelled here.
+  spike-in normalisation; TTpipe has no total-RNA input and does not model
+  rates.
 
 Keep these limits in mind when you read a result as "transcription went down":
-it means "went down relative to the other genes".
+without spike-in normalisation it means "went down relative to the other
+genes".
 
 ## Where each step lives
 

@@ -61,9 +61,10 @@ BODY_BINS = 100            # bins across the scaled gene body
 MAX_MODEL_ROWS = 10        # gene-model rows drawn per locus
 SIZE_WARN_MB = 40.0
 ALLOWED_STATIC = ("svg", "pdf", "png")
-NORMALIZATION = ("scaled coverage: the bigWigs were written by bamCoverage with the library-size scale factors of "
+NORMALIZATION = ("scaled coverage: the bigWigs were written by bamCoverage with the scale factors of "
                  "tracks/scale_factors.tsv already applied (nothing is rescaled here); values are averaged in bins. "
-                 "No spike-in normalization.")
+                 "The factors are library-size factors, or spike-in factors when spike_in.normalize includes "
+                 "'tracks' (the table's source column says which).")
 
 
 # --------------------------------------------------------------------------

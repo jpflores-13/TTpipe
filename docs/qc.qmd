@@ -127,13 +127,17 @@ metagene and antisense-fraction table of the
 The box "Not assessed by this pipeline" lists what the report cannot say, and
 draws no panels for them because there are no data:
 
-- **Spike-in fraction.** There is no spike-in RNA or spike-in reference, so no
-  spike-in normalisation or fraction is computed.
+- **Spike-in fraction.** The report does not show spike-in numbers yet. With
+  the optional, experimental spike-in module on
+  ([Configuration](configuration.qmd#spike-in)), the spike-in read pairs and
+  their share of each library (`spike_pct`) are in `spike/spike_counts.tsv`,
+  and the pairs per spike-in contig in `spike/spike_contig_counts.tsv`. With
+  the module off, nothing about spike-ins is computed.
 - **Labeled-versus-total enrichment.** There are no total or input RNA samples
   to compare the labeled RNA against, so labeling efficiency and unlabeled
   carry-over are not measured.
 - **Synthesis and degradation rates.** These need total and labeled RNA plus
-  spike-in normalisation.
+  spike-in normalisation, and are not implemented.
 
 Also not measured: the 4sU incorporation or biotin capture efficiency itself,
 and any comparison with an external dataset. A library that passes every light

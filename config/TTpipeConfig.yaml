@@ -105,8 +105,8 @@ spike_in:
 ## ---- Stranded signal plots -------------------------------------------------
 ## One interactive page, <outputDir>/analysis/TTpipe_stranded_signal.html: per-locus tracks (+ strand RNA above
 ## the axis, - strand RNA mirrored below, one panel per condition, gene models), stranded metagene profiles
-## (sense vs antisense) and an antisense-fraction table. It reads the stranded bigWigs (scaled by the library-size
-## factors in tracks/scale_factors.tsv; spike-in normalization is not implemented), so it is built when the
+## (sense vs antisense) and an antisense-fraction table. It reads the stranded bigWigs (scaled by the factors in
+## tracks/scale_factors.tsv: library size, or the spike-in with spike_in.normalize 'tracks'), so it is built when the
 ## bigWigs are made in this run or already exist, and skipped in analysis-only runs without bigWigs.
 ## TTpipe does not call enhancer RNAs (eRNAs) or any other transcripts; the BED options below only choose where to look.
 stranded_plots: true                  # false: do not build the page

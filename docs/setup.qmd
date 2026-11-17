@@ -3,8 +3,8 @@
 ## Prerequisites
 
 - A **Linux** machine or a SLURM cluster. On a mouse genome, STAR alignment
-  measured about 26 GB of memory and the index build about 29 GB, so a typical
-  laptop is not enough (see [Cluster reference](cluster.qmd)). macOS arm64 is not supported: STAR
+  measured about 26 GB of memory and the index build about 29 GB; on human,
+  about 29 GB and 62.5 GB. A typical laptop is not enough (see [Cluster reference](cluster.qmd)). macOS arm64 is not supported: STAR
   2.7.9a, samtools 1.12 and HTSeq 0.13.5, the versions TTpipe pins, have no
   arm64 builds on bioconda.
 - `python3` >= 3.11 and `conda` >= 24.7.1, loaded by your site's
@@ -129,10 +129,10 @@ is a free-text label shown in reports. To work on another organism you change
 config keys; you do not edit rules or scripts.
 
 ::: {.callout-warning}
-**What has been run.** Only mouse (mm10, GENCODE vM25) has been run on real
-data. Human is expected to work but has not been tested. Any other organism
-is untested, and STAR's memory need for genomes larger than mouse has not been
-measured.
+**What has been run.** Mouse (mm10, GENCODE vM25) has been run on real data
+end to end. Human (GRCh38, GENCODE v44) has been run on real data for
+**processing only**; DESeq2 and GSEA have not been run on human. Any other
+organism is untested. Details in [Validation status](validation.qmd).
 :::
 
 ### Human
@@ -164,11 +164,14 @@ measured.
       Hallmarks: '/path/to/h.all.v<release>.Hs.symbols.gmt'
     ```
 
-5. Raise the STAR memory in your profile (`star_align`, `star_index`
-   `mem_mb`) if a first run is killed. The human genome is larger than the
-   mouse one; the mouse measurements (about 26 GB for alignment and about
-   29 GB for the index build) are a starting point for planning, not a
-   prediction.
+5. Raise the STAR index memory in your profile. On the human test
+   (GRCh38 with ERCC92, 16 threads) the index build peaked at 62.5 GB, more
+   than the 48000 MB that most profiles ship for `star_index` (the `pioneer`
+   profile now asks for 72000); alignment peaked at about 29 GB, within the
+   shipped 40000.
+6. Set `reference_condition` to one of your conditions even for a
+   processing-only run; the shipped `'DMSO'` is checked regardless
+   ([Troubleshooting](troubleshooting.qmd)).
 
 ### Any other organism
 
@@ -207,8 +210,8 @@ exist for your organism, leave `gsea_collections: {}` and GSEA is skipped.
 ### Memory for larger genomes
 
 STAR needs memory roughly in proportion to the genome (general knowledge).
-Mouse measured about 26 GB for alignment and about 29 GB for the index build.
-For anything larger, run one sample first, check what the job used with
+Mouse measured about 26 GB for alignment and about 29 GB for the index build;
+human (with ERCC92) about 29 GB and 62.5 GB. For any other genome, run one sample first, check what the job used with
 `seff <jobid>` or `sacct`, and raise `mem_mb` for `star_align` and
 `star_index` in your profile ([Cluster reference](cluster.qmd#tuning-resources)).
 
@@ -269,8 +272,9 @@ pytest -q tests
 ```
 
 These tests use synthetic and placeholder files. They check logic and the job
-graph, not that STAR, DESeq2 or any other tool works on real data; see
-[Validation status](validation.qmd).
+graph, not that STAR, DESeq2 or any other tool works on real data. The real-data
+runs (mouse end to end; human processing with the experimental spike-in
+module) are recorded in [Validation status](validation.qmd).
 
 ## 6. Run
 

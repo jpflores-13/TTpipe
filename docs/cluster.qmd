@@ -19,7 +19,10 @@ The `longleaf` and `pioneer` profiles contain a **required** placeholder,
 `slurm_account: <your-slurm-account>`. SLURM rejects submissions until you
 replace it with your own account (find it with `sacctmgr show assoc
 user=$USER`) or delete the line if your cluster has no accounts. The
-`biowulf` profile has no account line.
+`biowulf` profile has no account line. A dry run (`bash TTpipe.sh -n`) does
+**not** catch a placeholder left in place: it passes, and the submitted
+launcher then fails within a minute with `Failed to evaluate resources value
+'<your-slurm-account>'`.
 
 Each folder has two files:
 
@@ -91,7 +94,8 @@ many clusters use; commands such as `sinfo` and `sacctmgr` belong to it.
 
 2. **Find your partition.** A partition is a queue of nodes. List them with
    `sinfo -s` and pick one for ordinary CPU jobs with enough memory per node
-   (STAR needs about 26 to 30 GB on a mouse genome, see below). Your cluster's
+   (STAR needs about 26 to 30 GB on a mouse genome and up to about 63 GB to
+   build a human index, see below). Your cluster's
    documentation names the right one.
 3. **Find your account**, if your cluster uses accounts for billing or
    limits: `sacctmgr show assoc user=$USER format=account%30`. If it prints
@@ -122,7 +126,8 @@ many clusters use; commands such as `sinfo` and `sacctmgr` belong to it.
 
 8. **Build the environments, then submit.** Snakemake downloads each conda
    environment on first use, so do the first build on a machine with internet
-   access, then submit ([Troubleshooting](troubleshooting.qmd#the-clusters-compute-nodes-have-no-internet-access)):
+   access, wait for it to finish, then submit
+   ([Building the environments](#building-environments)):
 
     ```bash
     bash TTpipe.sh --conda-create-envs-only
@@ -150,8 +155,13 @@ The facts here were observed on a real mouse run on Pioneer.
   scratch.
 - Miniforge was installed in `$HOME/miniforge3` (the profile's `env.sh` uses
   `TTPIPE_CONDA_ROOT`, default `$HOME/miniforge3`).
-- The login node has internet access, and the conda environments were built
-  there before the run was submitted.
+- The login node has internet access, and so do the compute nodes (tested:
+  conda-forge and PyPI were reachable from a batch job). Building the
+  environments on the login node was killed partway in one test, so the
+  environments are best built in a SLURM job
+  ([Building the environments](#building-environments)).
+- A fresh clone has `slurm_account: <your-slurm-account>` in
+  `profiles/pioneer/config.yaml`; the launcher fails until you replace it.
 
 ```bash
 # once, in ~/.bashrc (replace <your-username>)
@@ -165,8 +175,8 @@ mkdir -p "$CONDA_PKGS_DIRS" "$XDG_CACHE_HOME" "$TMPDIR"
 # find your account, then replace <your-slurm-account> in profiles/pioneer/config.yaml
 sacctmgr show assoc user=$USER
 
-# on the login node: build the conda environments, then submit
-bash   TTpipe.sh --configfile config/mine.yaml --conda-create-envs-only
+# build the conda environments in a job; when it has finished, submit
+sbatch --cpus-per-task=8 --mem=32G TTpipe.sh --configfile config/mine.yaml --conda-create-envs-only
 sbatch TTpipe.sh --configfile config/mine.yaml
 ```
 
@@ -174,10 +184,44 @@ sbatch TTpipe.sh --configfile config/mine.yaml
 ([Configuration](configuration.qmd)). If your site's default account or
 partition does not fit the launcher job, add `--account=<your-slurm-account>`
 or `--partition=batch` to the `sbatch` line, before `TTpipe.sh`. The per-rule
-memory in `profiles/pioneer/config.yaml` is a starting value; measured on
+memory in `profiles/pioneer/config.yaml` is a starting value. Measured on
 mouse, STAR alignment used about 26 GB and the STAR index build about 29 GB
-(about 36 minutes).
+(about 36 minutes). Measured on human (GRCh38 with ERCC92), alignment used
+about 29 GB and the index build 62.5 GB (34 minutes on 16 threads), so the
+profile's `star_index` memory is now 72000 MB.
 :::
+
+## Building the environments {#building-environments}
+
+Snakemake builds one conda environment per group of rules (seven in all) the
+first time a rule needs it. Building them all in advance, once, avoids a long
+first job and lets you see build failures before anything else runs:
+
+```bash
+bash TTpipe.sh --configfile config/mine.yaml --conda-create-envs-only
+```
+
+**If your compute nodes have internet access**, run the same command as a SLURM
+job instead of on the login node, where long processes may be killed. Pioneer's
+compute nodes do; ask your site if you do not know. On Pioneer all seven
+environments built in one job in 69 minutes with 8 cores and 32 GB:
+
+```bash
+sbatch --cpus-per-task=8 --mem=32G TTpipe.sh --configfile config/mine.yaml --conda-create-envs-only
+```
+
+(`snakemake --conda-create-envs-only` with the same profile does the same.) If
+the compute nodes have no internet access, build on the login node or another
+machine with access
+([Troubleshooting](troubleshooting.qmd#the-clusters-compute-nodes-have-no-internet-access)).
+
+**Never run two builds at once**, and do not start the real run while a build
+is still going. Overlapping or killed builds that share `.snakemake/conda` and
+the package cache left environments with missing standard-library files, and
+jobs then failed with `No module named '__future__'` or `Could not find
+platform independent libraries`. The fix is to delete the broken environment
+folders and the package cache (`CONDA_PKGS_DIRS`) and build once more
+([Troubleshooting](troubleshooting.qmd#broken-conda-env)).
 
 ## Single workstation {#workstation}
 
@@ -189,7 +233,8 @@ selecting):
 2. Know your memory. STAR needs roughly 26 to 30 GB for a mouse genome
    (measured about 26 GB for alignment and 29 GB for the index build); a
    machine with less cannot align it, and there is no setting that avoids
-   that. Larger genomes need more and have not been measured.
+   that. Human measured about 29 GB for alignment and 62.5 GB for the index
+   build; other genomes have not been measured.
 3. Set the limit in `profiles/local/config.yaml`: `resources: - mem_mb=64000`
    is the total memory TTpipe may use at once. Set it to a little below your
    machine's free memory. Snakemake starts jobs only while their `mem_mb`
@@ -216,8 +261,8 @@ mouse-genome needs, not benchmarks of TTpipe.**
 |------|---------|----------|-----------------|-------|
 | `fastqc` | 4 | 4000 | 120 | per sample and mate |
 | `fastp` | 8 | 8000 | 120 | only if `trim: true` |
-| `star_index` | 16 | 48000 | 240 | only if `build_star_index: true`; mouse measured about 29 GB |
-| `star_align` | 16 | 40000 | 480 | per sample; STAR on a mouse genome measured about 26 GB |
+| `star_index` | 16 | 48000 (`pioneer`: 72000) | 240 | only if `build_star_index: true`; mouse measured about 29 GB, human + ERCC 62.5 GB, so raise it for human |
+| `star_align` | 16 | 40000 | 480 | per sample; measured about 26 GB on mouse and 29 GB on human |
 | `mapq_filter` | 8 | 4000 | 120 | |
 | `mark_duplicates` | 2 | 16000 | 240 | Picard; no Java heap is set by the rule |
 | `split_strands` | 8 | 8000 | 240 | per sample and strand |

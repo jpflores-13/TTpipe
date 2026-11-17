@@ -65,6 +65,7 @@ All under `analysis/deseq2/` unless noted.
 | `vst.tsv` | The VST values (same layout), used for the PCA in the QC report |
 | `sankey_categories.tsv` | Up / Down / n.s. category per gene and comparison |
 | `../figures/pca.pdf` | PCA of the samples |
+| `deseq2_size_factors.tsv` | Only with spike-in DESeq2 normalization: `sample`, `size_factor`, `method` (the factors DESeq2 used) |
 
 ### How to read a results table
 
@@ -94,12 +95,53 @@ that test, not `log2FoldChange / lfcSE`. Ranking by it for GSEA is then no
 longer the guide's ranking. The default, 0, matches the guide.
 :::
 
-### No spike-in
+### Spike-in normalization (optional, experimental) {#spike-in}
 
-DESeq2's normalisation assumes most genes do not change. There is no spike-in
-in this pipeline, so a treatment that changes nascent transcription globally
-cannot be detected from these results, and "down" always means "down relative
-to the bulk of genes". See [From Reads to Results](journey.qmd#what-the-numbers-do-not-tell-you).
+By default DESeq2's normalisation assumes most genes do not change: a treatment
+that changes nascent transcription globally cannot be detected from the
+results, and "down" means "down relative to the bulk of genes". See
+[From Reads to Results](journey.qmd#what-the-numbers-do-not-tell-you).
+
+If your libraries contain a spike-in RNA (for example ERCC92), the optional
+`spike_in` module can use it instead. It is off by default, and with
+`spike_in.enabled: false` the workflow is exactly the one described above. The
+keys are in [Configuration](configuration.qmd#spike-in) and the steps in
+[Recipes](recipes.qmd#use-a-spike-in). `spike_in.normalize` chooses what the
+spike-in is used for:
+
+- **`tracks`**: the bigWig scale factors come from spike-in read pairs:
+  (largest number of spike-in pairs over conditions, replicates summed) /
+  this condition's. `tracks/scale_factors.tsv` shows source `spike-in` and two
+  extra columns, `host_pairs` and `spike_pairs`. Without `tracks`, the usual
+  library-size factor is used, but counted on host pairs only.
+- **`deseq2`** (only when `run_analysis` is true): DESeq2 size factors come from
+  the spike-in. With `size_factor_method: 'total'` each sample's size factor is
+  its spike-in pairs (only `use_contigs`) divided by the geometric mean over
+  samples; a sample with no spike-in pairs is an error. With `'genes'`, DESeq2's
+  own median-of-ratios is run on the spike-in genes only (`controlGenes`; needs
+  `spike_in.gtf`).
+
+The factors are set **before** the VST, so the VST, the PCA and
+`normalized_counts.tsv` all use them, as do the results tables. The factors
+used are written to `analysis/deseq2/deseq2_size_factors.tsv`. The count matrix
+DESeq2 reads still holds host genes only; spike-in gene counts are in
+`counts/counts_spike.txt`.
+
+::: {.callout-warning}
+**Experimental and partly untested.** Track factors from the spike-in have been
+run once on real data (human plus ERCC92, 2 million read pairs per sample,
+processing only). There the spike-in had only 30 to 89 read pairs per sample,
+so the factors were a test of the mechanics, not a usable normalisation.
+**DESeq2 with spike-in size factors has not been run on real data**, and
+neither has `size_factor_method: 'genes'`. Check `spike/spike_counts.tsv`
+before trusting any spike-in factor.
+:::
+
+**TT-seq spike-in mixes.** TT-seq protocols often add a few 4sU-labeled and a
+few unlabeled spike-in RNAs. Only the labeled ones go through the 4sU
+purification, so `use_contigs` should list the labeled spike-ins; with the
+default `[]` every spike-in contig counts. Which contigs are labeled comes from
+your protocol, not from the reads.
 
 ## GSEA with fgsea
 
@@ -218,15 +260,18 @@ a laptop with no network, and can be emailed. Nothing is computed on a server.
   shown as n.s.; in the volcano they sit at y = 0. Genes with NA baseMean are
   not in the file.
 - Biotype filtering uses the `gene_type` of the annotation (GENCODE). "lncRNA"
-  is whatever the GTF calls lncRNA; nothing is detected de novo.
+  is whatever the GTF calls lncRNA; nothing is detected de novo. Older GENCODE
+  releases (mouse vM25 among them) still use types such as `lincRNA` and
+  `antisense`; here they appear as their own biotypes. (The lncRNA group of the
+  stranded signal page's metagene does include them.)
 - There is no genome browser or track panel on this page (stranded tracks are
   on the separate [stranded signal page](#stranded-signal)), and no eRNA calling.
 - Size: the page holds the full result tables for every contrast, so many
   contrasts and large GSEA collections make it large. The job log
   (`logs/results_explorer.log`) prints the size and warns above 40 MB.
-- The page has been exercised only on synthetic data (data preparation tests
-  plus its controls driven in headless Chrome). It has not yet been run on real
-  pipeline output.
+- The page has been tested on synthetic data and run as a cluster job on real
+  mouse output, with its controls checked in headless Chrome only
+  ([Validation status](validation.qmd)).
 
 ## Stranded signal {#stranded-signal}
 
@@ -234,16 +279,24 @@ a laptop with no network, and can be emailed. Nothing is computed on a server.
 default) draws the stranded bigWigs of every condition. Like the results
 explorer it is one static file: the binned data are embedded as JSON and the
 plotting library is inlined, so it opens by double-clicking, with no network,
-and can be emailed. **It has only been exercised on synthetic data** (small
-invented genomes, bigWigs and counts, with its controls driven in headless
-Chrome) until it is run on real pipeline output.
+and can be emailed. It is tested on synthetic data (small invented genomes,
+bigWigs and counts, with its controls driven in headless Chrome) and has been
+run as a cluster job on real data: the 8-sample mouse output of the
+[validation run](validation.qmd) (13,419 expressed genes; protein_coding
+metagene 11,348 genes, lncRNA 1,389; 13,837 genes in the strand table; 19 locus
+tracks, none missing; a 6.0 MB page in about 4 minutes) and a human run
+(processing only). On the mouse data *Gapdh* (- strand) had its reads on the
+reverse strand and *Zfp143* (+ strand) on the forward strand, about 97 to 99 %
+sense.
 
 **What the signal is.** The values are the bigWig values as `bamCoverage` wrote
-them, already multiplied by the library-size scale factors in
-`tracks/scale_factors.tsv` (largest condition's mapped pairs divided by this
-condition's). Nothing is rescaled on the page, and the page states this above
-the plots. Spike-in normalization is not implemented, so a global change in
-nascent RNA output between conditions is not corrected for beyond library size.
+them, already multiplied by the scale factors in `tracks/scale_factors.tsv`:
+by default library-size factors (largest condition's mapped pairs divided by
+this condition's), so a global change in nascent RNA output between conditions
+is not corrected for beyond library size. With the optional, experimental
+[spike-in module](#spike-in) and `tracks` in `spike_in.normalize`, the factors
+come from spike-in pairs instead. Nothing is rescaled on the page, and the page
+states this above the plots.
 Values are averaged in bins of `track_bin_size` bases (uncovered bases count as
 zero). A very wide window gets a larger bin, in whole multiples, so that a
 panel never needs more than 4000 bins; the page says so for that locus.
@@ -301,7 +354,10 @@ the page is skipped, not failed.
   narrow the list by name, gene id, coordinates or source.
 
 **Reading the metagene.** For each group of genes (`metagene_groups`, matched on
-the annotation's `gene_type`; default protein_coding and lncRNA) the page shows
+the annotation's `gene_type`; default protein_coding and lncRNA; the lncRNA
+group also takes the older GENCODE types such as `lincRNA`, `antisense`,
+`sense_intronic` and `processed_transcript`, which mouse vM25 still uses, and
+its label lists the older types it included) the page shows
 the mean (or, with the toggle, the median) signal per bin over the genes of the
 group, one colour per condition. The signal is oriented by the gene: for a + gene
 sense is the forward bigWig and antisense the reverse, for a - gene they swap and
@@ -355,12 +411,14 @@ environment; if it is not importable the job stops with a clear message.
   options only choose where to look. An eRNA signal is weak and needs enough
   sequencing depth to stand above background; whether a region is an enhancer
   comes from your annotation, not from this page.
-- Normalization is library size only (see above); there is no spike-in.
+- Normalization is by library size unless the optional, experimental spike-in
+  module sets the track factors (see above).
 - Gene models are collapsed unions of exons.
 - The embedded data are binned arrays, not read-level data; the page is not a
   genome browser (no free zoom below the bin size, no separate transcripts).
 - Replicates are merged in the bigWigs, so the page shows no replicate spread.
-- Exercised on synthetic data only so far.
+- Run on real data for mouse (8 samples, subsampled) and human (processing
+  only, subsampled); not on full-depth data.
 
 ## Deliberate changes in the analysis
 

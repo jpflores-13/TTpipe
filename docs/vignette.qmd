@@ -41,7 +41,8 @@ actually been run.
 
 ::: {.callout-note}
 **Your organism is not mouse?** The walkthrough uses the public mouse example
-because that is what the pipeline has been run on. Every step is the same
+because that is what the pipeline has been run on end to end (a human dataset
+has been run through processing only). Every step is the same
 for other organisms: only the reference files, `sjdb_overhang` and the gene
 sets change. See [Setup: Other genomes](setup.qmd#other-genomes). If your
 cluster or workstation differs from the one assumed below, see the
