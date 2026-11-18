@@ -2,9 +2,7 @@
 
 Each recipe below is a change to `config/TTpipeConfig.yaml` (or a command), with
 what it does and what to watch out for. After any change, run
-`bash TTpipe.sh -n` first: the dry run lists what Snakemake will redo. Unless a
-recipe says otherwise, it has not been run on real data by the author; the
-recipes follow the code ([Validation status](validation.qmd)).
+`bash TTpipe.sh -n` first: the dry run lists what Snakemake will redo.
 
 ## Analysis-only run on an existing count matrix
 

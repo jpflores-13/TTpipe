@@ -36,6 +36,8 @@ format:
   html:
     theme:
       light: [cosmo, custom.scss]
+    mermaid:
+      theme: neutral
     code-background: true
     code-copy: true
     toc: true

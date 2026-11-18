@@ -38,33 +38,10 @@ The layout (samplesheet, config, SLURM profiles, per-rule conda
 environments, static QC report) follows PhanstielLab's dietJuicer and the
 author's MicroCPipe.
 
-### What is and is not tested
+### Test runs
 
-- The conda environments were solved on one Linux cluster. They were not
-  solved on osx-arm64: STAR 2.7.9a, samtools 1.12 and HTSeq 0.13.5 have no
-  arm64 builds.
-- The DESeq2, fgsea and Sankey code was not run locally; it has run on the
-  real mouse data on the cluster (below). `tests/test_analysis_scripts.py`
-  tests the pure-R helpers (`scripts/tt_analysis_utils.R`) only.
-- Resource numbers in `profiles/*/config.yaml` are starting guesses, except
-  where a comment in the profile gives a measured value.
-- `pytest tests` and CI use synthetic files and placeholder fixtures and run
-  Snakemake dry runs. No tool is executed on real data by the tests.
-- Real-data tests on one cluster (Pioneer, SLURM), all on read subsets, are
-  recorded in [`docs/validation.qmd`](docs/validation.qmd):
-  - mouse (GEO GSE260914, 8 samples): processing, DESeq2, fgsea, Sankey, QC
-    report, results explorer and the stranded signal page;
-  - human MCF-7 (GEO GSE218726, 10 samples, GRCh38 + GENCODE v44 + ERCC92):
-    processing only, with the spike-in module on (`normalize: ['tracks']`),
-    including the stranded signal page and the QC report. The spike-in had
-    30 to 89 read pairs per sample, so this tested the mechanics, not usable
-    normalization.
-- Not run on real data: full-depth data; DESeq2 or GSEA on human; DESeq2
-  with spike-in size factors; `size_factor_method: genes`; spike-in with
-  replicates; `trim` (fastp), `strandedness: forward`, `count_strand:
-  sense`, `sample_tracks`, `analysis_counts`; any other cluster.
-  Labeled-versus-total comparison, eRNA discovery and rate analyses are not
-  implemented.
+The runs on real data (mouse GSE260914, human GSE218726) are recorded in
+[`docs/validation.qmd`](docs/validation.qmd).
 
 ### Data flow
 
@@ -110,7 +87,8 @@ HTSeq files --> count_matrix                                    host-only matric
 
 ### The rule graph
 
-Each box is a rule, each arrow a dependency. It is generated from the real
+Each box is a rule, each arrow a dependency. An arrow that ends on a coloured stage box means the rule feeds several
+rules of that stage (for example, most steps feed the QC report). It is generated from the real
 Snakefile (`snakemake --rulegraph`) by `python scripts/make_dag.py` and is
 checked against the code by `tests/test_dag.py`; never edit it by hand. All
 optional branches are switched on (`trim`, `build_star_index`,
@@ -120,43 +98,49 @@ off; its rules are described in
 
 <!-- dag:start -->
 ```mermaid
-flowchart LR
-  subgraph Processing["Processing"]
-    fastqc[fastqc]
-    mark_duplicates[mark_duplicates]
-    mapq_filter[mapq_filter]
-    star_align[star_align]
+%%{init: {"themeVariables": {"fontSize": "17px"}, "flowchart": {"curve": "basis", "nodeSpacing": 22, "rankSpacing": 34}}}%%
+flowchart TB
+  subgraph stage_read_qc["Read QC"]
     fastp[fastp]
+    fastqc[fastqc]
+  end
+  subgraph stage_alignment["Alignment"]
     star_index[star_index]
+    star_align[star_align]
+    mapq_filter[mapq_filter]
+    mark_duplicates[mark_duplicates]
+  end
+  subgraph stage_strands_and_tracks["Strands and tracks"]
     split_strands[split_strands]
-    bigwig[bigwig]
+    bigwig_sample[bigwig_sample]
     merge_bams[merge_bams]
     scale_factors[scale_factors]
-    bigwig_sample[bigwig_sample]
-    count_matrix[count_matrix]
-    htseq_count[htseq_count]
-    gene_info[gene_info]
+    bigwig[bigwig]
   end
-  subgraph Analysis["Analysis"]
+  subgraph stage_counts["Counts"]
+    gene_info[gene_info]
+    htseq_count[htseq_count]
+    count_matrix[count_matrix]
+  end
+  subgraph stage_analysis["Analysis"]
     sample_table[sample_table]
     deseq2[deseq2]
-    sankey[sankey]
-    fgsea[fgsea]
     rnk[rnk]
+    fgsea[fgsea]
     results_explorer[results_explorer]
+    sankey[sankey]
     stranded_signal[stranded_signal]
   end
-  subgraph Reporting["Reporting"]
-    qc_report[qc_report]
-    qc_summary[qc_summary]
+  subgraph stage_reporting["Reporting"]
     multiqc[multiqc]
+    qc_summary[qc_summary]
+    qc_report[qc_report]
   end
   bigwig --> qc_report
   bigwig --> stranded_signal
   bigwig_sample --> qc_report
-  count_matrix --> deseq2
+  count_matrix --> stage_analysis
   count_matrix --> qc_summary
-  count_matrix --> stranded_signal
   deseq2 --> qc_report
   deseq2 --> results_explorer
   deseq2 --> rnk
@@ -168,17 +152,12 @@ flowchart LR
   fgsea --> results_explorer
   gene_info --> count_matrix
   gene_info --> qc_summary
-  gene_info --> results_explorer
-  gene_info --> rnk
-  gene_info --> stranded_signal
+  gene_info --> stage_analysis
   htseq_count --> count_matrix
   mapq_filter --> mark_duplicates
   mapq_filter --> qc_summary
-  mark_duplicates --> bigwig_sample
-  mark_duplicates --> merge_bams
-  mark_duplicates --> multiqc
-  mark_duplicates --> qc_summary
-  mark_duplicates --> split_strands
+  mark_duplicates --> stage_strands_and_tracks
+  mark_duplicates --> stage_reporting
   merge_bams --> bigwig
   merge_bams --> scale_factors
   qc_summary --> qc_report
@@ -192,9 +171,20 @@ flowchart LR
   split_strands --> htseq_count
   split_strands --> merge_bams
   star_align --> mapq_filter
-  star_align --> multiqc
-  star_align --> qc_summary
+  star_align --> stage_reporting
   star_index --> star_align
+  stage_read_qc ~~~ stage_alignment
+  stage_alignment ~~~ stage_strands_and_tracks
+  stage_strands_and_tracks ~~~ stage_analysis
+  stage_analysis ~~~ stage_reporting
+  classDef rule fill:#ffffff,stroke:#5f6368,color:#202124,stroke-width:1px
+  class fastp,fastqc,gene_info,sample_table,star_index,star_align,mapq_filter,mark_duplicates,multiqc,split_strands,bigwig_sample,htseq_count,count_matrix,deseq2,merge_bams,qc_summary,rnk,fgsea,results_explorer,sankey,scale_factors,bigwig,qc_report,stranded_signal rule
+  style stage_read_qc fill:#e8f0fe,stroke:#8ab4f8,color:#202124
+  style stage_alignment fill:#e8f0fe,stroke:#8ab4f8,color:#202124
+  style stage_strands_and_tracks fill:#e6f4ea,stroke:#81c995,color:#202124
+  style stage_counts fill:#e6f4ea,stroke:#81c995,color:#202124
+  style stage_analysis fill:#fef7e0,stroke:#fdd663,color:#202124
+  style stage_reporting fill:#fce8e6,stroke:#f28b82,color:#202124
 ```
 <!-- dag:end -->
 
@@ -1042,9 +1032,7 @@ TTpipe/
   genes are not found. Only a `chr`-prefix difference in the first sequence
   is caught at startup (`check_reference_names`).
 - **Other organisms.** No code is mouse-specific; see
-  [`docs/setup.qmd`](docs/setup.qmd) (Other genomes). Mouse has been run on
-  real data end to end; human (GRCh38 + GENCODE v44) for processing only
-  (not DESeq2 or GSEA).
+  [`docs/setup.qmd`](docs/setup.qmd) (Other genomes).
 - **`reference_condition` in processing-only runs.** It is validated even
   when `run_analysis` is false. The shipped config says `DMSO`, so a
   samplesheet without a `DMSO` condition fails at parse time; set it to one

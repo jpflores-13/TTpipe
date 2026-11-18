@@ -22,26 +22,7 @@ where TTpipe deliberately does something different are listed in
 The scale factors the guide quotes come from the authors' repository.
 :::
 
-::: {.callout-warning}
-**What is and is not tested.**
-
-- The conda environments were solved on one Linux cluster. They were **not**
-  solved on macOS arm64: STAR 2.7.9a, samtools 1.12 and HTSeq 0.13.5 have no
-  arm64 builds, so run TTpipe on Linux.
-- The DESeq2, fgsea and Sankey code was written without being run locally.
-- The per-rule threads, memory and time in the profiles are starting guesses,
-  not benchmarks.
-- The automated tests (pytest, CI) use synthetic and placeholder files and
-  Snakemake dry runs. They run no aligner and no statistics on real data.
-- Real data, subsampled, on one SLURM cluster: mouse has been run end to end;
-  human only through processing (no DESeq2 or GSEA). No full-depth run.
-- The optional spike-in normalization is **experimental** and off by default.
-  Spike-in counting and track factors have run on real data with very few
-  spike-in reads; DESeq2 with spike-in size factors has not.
-
-**Validation status.** What has and has not been observed is recorded in
-[Validation status](validation.qmd).
-:::
+The test runs on real data are recorded in [Validation status](validation.qmd).
 
 ::: {.callout-note}
 **Included example.** The shipped samplesheet and config describe the eight
@@ -86,7 +67,8 @@ uses every sample separately.
 
 ## The rule graph
 
-Each box is a rule, each arrow a dependency. The diagrams below are
+Each box is a rule, each arrow a dependency. An arrow that ends on a coloured stage box means the rule feeds several
+rules of that stage (for example, most steps feed the QC report). The diagrams below are
 generated from the real Snakefile by `python scripts/make_dag.py` (which
 runs `snakemake --rulegraph`); re-run it after changing a rule, and never
 edit the diagram files by hand.

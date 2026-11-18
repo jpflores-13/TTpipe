@@ -10,6 +10,14 @@ authors' code is at <https://github.com/magnitov/zfp143>; the scale factors the
 pipeline guide quotes come from there. TTpipe follows a pipeline guide for this
 paper; it is not the authors' code.
 
+**chrTT-seq of MCF-7 cells** (GEO
+[GSE218726](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE218726);
+PubMed [37857083](https://pubmed.ncbi.nlm.nih.gov/37857083/)). Chromatin-associated
+and chromatin-released nascent RNA after a 4sU pulse-chase, with three 4sU-labeled
+and three unlabeled ERCC spike-ins. Used, subsampled, for TTpipe's human and
+spike-in test (see [Validation](validation.qmd)); TTpipe does not reproduce that
+study's analysis.
+
 **dietJuicer** (PhanstielLab). The pipeline layout, samplesheet and profile
 conventions TTpipe follows. <https://github.com/PhanstielLab/dietJuicer>
 
@@ -66,6 +74,12 @@ and samples in a single report. *Bioinformatics* **32**:3047-3048 (2016).
 
 **GENCODE.** Frankish A, et al. GENCODE 2021. *Nucleic Acids Research* **49**:D916-D923
 (2021). Release M25 (mouse) is the default annotation:
-<https://www.gencodegenes.org/mouse/>
+<https://www.gencodegenes.org/mouse/>. The human test used release 44
+(GRCh38 primary assembly): <https://www.gencodegenes.org/human/>
+
+**ERCC spike-ins.** Jiang L, et al. Synthetic spike-in standards for RNA-seq
+experiments. *Genome Research* **21**:1543-1551 (2011). The ERCC92 sequences and
+annotation (`ERCC92.fa`, `ERCC92.gtf`) are distributed by Thermo Fisher with the
+ERCC RNA Spike-In Mix.
 
 **MSigDB** (gene sets for GSEA). <https://www.gsea-msigdb.org/gsea/msigdb>

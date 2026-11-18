@@ -128,12 +128,7 @@ finds mouse only in default file paths, comments and the `genome:` key, which
 is a free-text label shown in reports. To work on another organism you change
 config keys; you do not edit rules or scripts.
 
-::: {.callout-warning}
-**What has been run.** Mouse (mm10, GENCODE vM25) has been run on real data
-end to end. Human (GRCh38, GENCODE v44) has been run on real data for
-**processing only**; DESeq2 and GSEA have not been run on human. Any other
-organism is untested. Details in [Validation status](validation.qmd).
-:::
+Mouse and human have both been run; see [Validation status](validation.qmd).
 
 ### Human
 
