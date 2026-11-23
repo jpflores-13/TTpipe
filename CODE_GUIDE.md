@@ -85,6 +85,22 @@ HTSeq files --> count_matrix                                    host-only matric
 [spike_counts.tsv | spike_genes.tsv + counts_spike.txt] --> spike_size_factors --> deseq2   spike/size_factors.tsv or control_genes.txt; analysis/deseq2/deseq2_size_factors.tsv
 ```
 
+### The subway map
+
+The overview figure in the README and the book is a subway map drawn with
+[slitherFlow](https://github.com/mikemartinez99/slitherFlow). Unlike the rule
+graph below it is drawn by hand: its source is `docs/img/ttpipe_subway.yaml`
+(started from `slitherflow draft` on the rule graph with every option and the
+spike-in on, then edited), and `docs/img/ttpipe_subway.svg` is rendered from it:
+
+```bash
+pip install git+https://github.com/mikemartinez99/slitherFlow
+slitherflow render docs/img/ttpipe_subway.yaml -o docs/img/ttpipe_subway.svg --strict
+```
+
+`--strict` fails on overlapping labels. Nothing checks the map against the
+code, so update the YAML by hand when a step is added, removed or renamed.
+
 ### The rule graph
 
 Each box is a rule, each arrow a dependency. An arrow that ends on a coloured stage box means the rule feeds several
@@ -1009,7 +1025,7 @@ TTpipe/
 │                  qc_summary.py  qc_report.py  results_explorer.py  stranded_signal.py  make_dag.py
 ├── workflows/     TTpipe.snakefile  rules/{common,processing,spike,analysis,explorer,stranded,report,multiqc}.smk
 ├── tests/         pytest + placeholder fixtures (tests/dryrun/)
-└── docs/          Quarto book, img/ (generated rule graphs)
+└── docs/          Quarto book, img/ (generated rule graphs; subway map and its slitherFlow YAML)
 ```
 
 ## Conventions

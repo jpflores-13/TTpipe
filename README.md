@@ -124,13 +124,24 @@ recorded in [`docs/validation.qmd`](docs/validation.qmd).
                     <outputDir>/…
 ```
 
-The same workflow as a rule graph (every optional branch switched on; each
+The same workflow as a subway map (drawn with
+[slitherFlow](https://github.com/mikemartinez99/slitherFlow); dashed steps are optional):
+
+![TTpipe subway map](docs/img/ttpipe_subway.svg)
+
+The map's source is [`docs/img/ttpipe_subway.yaml`](docs/img/ttpipe_subway.yaml); after changing it, redraw with
+`slitherflow render docs/img/ttpipe_subway.yaml -o docs/img/ttpipe_subway.svg --strict`.
+
+The detailed rule graph (every optional branch switched on; each
 box is a rule, each arrow a dependency; an arrow that ends on a coloured stage box
 means the rule feeds several rules of that stage). It is generated from the real
 Snakefile by `python scripts/make_dag.py`; re-run that after changing a
 rule. The same script also writes a static, stage-grouped SVG
 ([`docs/img/dag_full.svg`](docs/img/dag_full.svg)) when Graphviz is installed, and a test
 fails if the diagrams go stale.
+
+<details>
+<summary>Show the rule-by-rule graph</summary>
 
 <!-- dag:start -->
 ```mermaid
@@ -223,6 +234,8 @@ flowchart TB
   style stage_reporting fill:#fce8e6,stroke:#f28b82,color:#202124
 ```
 <!-- dag:end -->
+
+</details>
 
 A **sample** is one samplesheet row (one pair of FASTQ files); a
 **condition** is a group of samples that are replicates of each other (for

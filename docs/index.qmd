@@ -65,9 +65,19 @@ example `DMSO`, `2H`, `6H`, `24H`). Samples are processed one by one; the
 replicates of a condition are merged only for the bigWig tracks, and DESeq2
 uses every sample separately.
 
-## The rule graph
+## The pipeline at a glance
 
-Each box is a rule, each arrow a dependency. An arrow that ends on a coloured stage box means the rule feeds several
+![](img/ttpipe_subway.svg){.column-page fig-alt="TTpipe subway map: FASTQ to alignment, filtering and duplicate removal, then stranded tracks, counts and differential expression, and quality control, with optional trimming, GSEA and spike-in normalization."}
+
+Each coloured line is a branch of the pipeline and each stop a step; dashed
+stops and lines are optional. The map is drawn with
+[slitherFlow](https://github.com/mikemartinez99/slitherFlow) from
+`img/ttpipe_subway.yaml`.
+
+### The rule graph {#the-rule-graph}
+
+The detailed version below has one box per Snakemake rule and one arrow per
+dependency. An arrow that ends on a coloured stage box means the rule feeds several
 rules of that stage (for example, most steps feed the QC report). The diagrams below are
 generated from the real Snakefile by `python scripts/make_dag.py` (which
 runs `snakemake --rulegraph`); re-run it after changing a rule, and never
@@ -76,9 +86,13 @@ edit the diagram files by hand.
 The **full workflow**, with every optional branch switched on (`trim`,
 `build_star_index`, `sample_tracks`, a GSEA collection and MultiQC):
 
+::: {.callout-note collapse="true"}
+## Show the rule-by-rule graph
+
 ```{mermaid}
 %%| file: img/dag_full.mmd
 ```
+:::
 
 The **processing-only** graph (`run_analysis: false`) and the
 **analysis-only** graph (`run_processing: false`) are on the

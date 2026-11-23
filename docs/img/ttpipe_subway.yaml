@@ -1,0 +1,86 @@
+# slitherFlow spec for the TTpipe subway map (https://github.com/mikemartinez99/slitherFlow).
+# Hand-tuned from `slitherflow draft` on TTpipe's rule graph (every optional branch on, spike-in on).
+# Render:  slitherflow render docs/img/ttpipe_subway.yaml -o docs/img/ttpipe_subway.svg --png
+
+title: "TTpipe"
+subtitle: "TT-seq (TTchem-seq) processing and analysis  ·  Snakemake 8"
+
+input: {label: "Input", sublabel: "Paired-end", file: "FASTQ"}
+
+trunk:                                   # steps every sample goes through
+  stations:
+    - {name: "Trimming", tool: "fastp", optional: true}
+    - {name: "Alignment", tool: "STAR"}
+    - {name: "MAPQ filter", tool: "samtools"}
+    - name: "Duplicates"
+      tool: "Picard"
+      outputs: [{file: "BAM", label: "Filtered alignments"}]
+  lines: [tracks, expression, qc]        # top -> bottom on the trunk
+
+lines:
+  tracks:
+    name: "Stranded tracks"
+    color: "#0072B2"
+    row: -1
+    stations:
+      - {name: "Strand split", tool: "samtools", x: 900}
+      - {name: "Merge replicates", tool: "samtools", x: 1040}
+      - {name: "Scale factors", tool: "Python", x: 1200}
+      - name: "Signal tracks"
+        tool: "deepTools bamCoverage"
+        x: 1360
+        outputs: [{file: "bigWig", label: "Per strand", dy: -150}]
+      - name: "Stranded signal page"
+        tool: "Python, plotly"
+        x: 1540
+        outputs: [{file: "HTML", label: "Tracks, metagene, antisense", dy: -150}]
+
+  expression:
+    name: "Counts and differential expression"
+    color: "#009E73"
+    row: 0
+    stations:
+      - {name: "Gene counts", tool: "HTSeq", x: 900}
+      - {name: "Count matrix", tool: "Python", x: 1040}
+      - name: "DE analysis"
+        tool: "DESeq2"
+        x: 1250
+        outputs: [{file: "CSV", label: "DEG tables", dy: 95}]
+      - {name: "GSEA", tool: "fgsea", optional: true, x: 1400}
+      - name: "Results explorer"
+        tool: "Python, plotly"
+        x: 1540
+        outputs: [{file: "HTML", label: "Volcano, MA, GSEA"}]
+
+  qc:
+    name: "Quality control"
+    color: "#CC79A7"
+    row: 1
+    to: terminus
+    stations:
+      - {name: "QC summary", tool: "Python", x: 1100}
+
+  readqc:
+    name: "Quality control"
+    color: "#CC79A7"
+    from: input
+    row: 2
+    to: terminus
+    stations:
+      - {name: "Read QC", tool: "FastQC", x: 600}
+
+  spike:
+    name: "Spike-in normalization"
+    color: "#D55E00"
+    optional: true
+    from: "Duplicates"
+    row: -2.2
+    to: {line: tracks, station: "Scale factors"}
+    stations:
+      - {name: "Spike-in counts", tool: "samtools idxstats", x: 1000}
+
+terminus: {name: "QC report", sublabel: "+ MultiQC", row: 1, file: "HTML"}
+
+footnote: >-
+  Dashed steps are optional (trim, gsea_collections, spike_in.enabled). With the spike-in on, its counts set the
+  track scale factors and, optionally, the DESeq2 size factors. Building the STAR index (build_star_index) is not shown.
