@@ -1,123 +1,116 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1835 888" width="1835" height="888">
-<rect width="1835" height="888" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1504 742" width="1504" height="742">
+<rect width="1504" height="742" fill="#ffffff"/>
 <text x="48.0" y="56.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="30" font-weight="700" fill="#1f2328" text-anchor="start">TTpipe</text>
-<text x="48.0" y="84.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="400" fill="#59636e" text-anchor="start">TT-seq (TTchem-seq) processing and analysis  ·  Snakemake 8</text>
-<path d="M86.0,480.0 L86.0,684.0 Q86.0,706.0 108.0,706.0 L1625.0,706.0 Q1647.0,706.0 1647.0,684.0 L1647.0,603.0" fill="none" stroke="#CC79A7" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M112.0,456.0 L766.0,456.0 Q788.0,456.0 803.6,471.6 L892.4,560.4 Q908.0,576.0 930.0,576.0 L1626.0,576.0" fill="none" stroke="#CC79A7" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M112.0,446.0 L766.0,446.0 Q788.0,446.0 810.0,446.0 L1540.0,446.0" fill="none" stroke="#009E73" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M112.0,436.0 L766.0,436.0 Q788.0,436.0 803.6,420.4 L892.4,331.6 Q908.0,316.0 930.0,316.0 L1540.0,316.0" fill="none" stroke="#0072B2" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M758.0,423.0 L758.0,182.0 Q758.0,160.0 780.0,160.0 L1022.0,160.0 Q1044.0,160.0 1059.6,175.6 L1192.0,308.0" fill="none" stroke="#ffffff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M758.0,423.0 L758.0,182.0 Q758.0,160.0 780.0,160.0 L1022.0,160.0 Q1044.0,160.0 1059.6,175.6 L1192.0,308.0" fill="none" stroke="#D55E00" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="16 9"/>
-<rect x="235.0" y="423.0" width="26" height="46.0" rx="13.0" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="248.0" y="492.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Trimming</text>
-<text x="248.0" y="509.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">fastp · optional</text>
-<rect x="405.0" y="423.0" width="26" height="46.0" rx="13.0" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="418.0" y="492.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Alignment</text>
-<text x="418.0" y="509.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">STAR</text>
-<rect x="575.0" y="423.0" width="26" height="46.0" rx="13.0" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="588.0" y="492.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">MAPQ filter</text>
-<text x="588.0" y="509.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">samtools</text>
-<rect x="745.0" y="423.0" width="26" height="46.0" rx="13.0" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="758.0" y="492.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Duplicates</text>
-<text x="758.0" y="509.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">Picard</text>
-<circle cx="900.0" cy="316.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="900.0" y="282.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Strand split</text>
-<text x="900.0" y="299.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">samtools</text>
-<circle cx="1040.0" cy="316.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="1040.0" y="282.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Merge replicates</text>
-<text x="1040.0" y="299.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">samtools</text>
-<circle cx="1200.0" cy="316.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="1200.0" y="352.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Scale factors</text>
-<text x="1200.0" y="369.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">Python</text>
-<circle cx="1360.0" cy="316.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="1360.0" y="282.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Signal tracks</text>
-<text x="1360.0" y="299.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">deepTools bamCoverage</text>
-<circle cx="1540.0" cy="316.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="1540.0" y="282.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Stranded signal page</text>
-<text x="1540.0" y="299.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">Python, plotly</text>
-<circle cx="900.0" cy="446.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="900.0" y="482.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Gene counts</text>
-<text x="900.0" y="499.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">HTSeq</text>
-<circle cx="1040.0" cy="446.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="1040.0" y="482.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Count matrix</text>
-<text x="1040.0" y="499.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">Python</text>
-<circle cx="1250.0" cy="446.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="1250.0" y="482.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">DE analysis</text>
-<text x="1250.0" y="499.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">DESeq2</text>
-<circle cx="1400.0" cy="446.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2" stroke-dasharray="4 3"/>
-<text x="1400.0" y="482.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">GSEA</text>
-<text x="1400.0" y="499.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">fgsea · optional</text>
-<circle cx="1540.0" cy="446.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="1540.0" y="482.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Results explorer</text>
-<text x="1540.0" y="499.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">Python, plotly</text>
-<circle cx="1100.0" cy="576.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="1100.0" y="612.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">QC summary</text>
-<text x="1100.0" y="629.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">Python</text>
-<circle cx="600.0" cy="706.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="600.0" y="742.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Read QC</text>
-<text x="600.0" y="759.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">FastQC</text>
-<circle cx="1000.0" cy="160.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="1000.0" y="126.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Spike-in counts</text>
-<text x="1000.0" y="143.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">samtools idxstats</text>
-<rect x="1622.0" y="544.0" width="36" height="64.0" rx="18.0" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
-<text x="1671.0" y="572.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#1f2328" text-anchor="start">QC report</text>
-<text x="1671.0" y="591.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">+ MultiQC</text>
-<path d="M47.0,417.0 H80.0 L93.0,430.0 V475.0 H47.0 Z" fill="#ffffff" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
-<path d="M80.0,417.0 V430.0 H93.0" fill="none" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
-<rect x="42.0" y="444.0" width="56.0" height="18" rx="3" fill="#57606a"/>
-<text x="70.0" y="458.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">FASTQ</text>
-<text x="70.0" y="388.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Input</text>
-<text x="70.0" y="404.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">Paired-end</text>
-<path d="M747.7,426.5 L710.0,391.8" fill="none" stroke="#8c959f" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/>
-<path d="M660.0,338.0 H693.0 L706.0,351.0 V396.0 H660.0 Z" fill="#ffffff" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
-<path d="M693.0,338.0 V351.0 H706.0" fill="none" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
-<rect x="655.0" y="365.0" width="56.0" height="18" rx="3" fill="#009E73"/>
-<text x="683.0" y="379.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">BAM</text>
-<text x="649.0" y="371.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="end">Filtered</text>
-<text x="649.0" y="387.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="end">alignments</text>
-<path d="M1360.0,303.0 L1360.0,199.0" fill="none" stroke="#8c959f" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/>
-<path d="M1337.0,137.0 H1370.0 L1383.0,150.0 V195.0 H1337.0 Z" fill="#ffffff" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
-<path d="M1370.0,137.0 V150.0 H1383.0" fill="none" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
-<rect x="1332.0" y="164.0" width="56.0" height="18" rx="3" fill="#0072B2"/>
-<text x="1360.0" y="178.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">bigWig</text>
-<text x="1394.0" y="162.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">Per strand</text>
-<path d="M1547.2,305.2 L1618.0,199.0" fill="none" stroke="#8c959f" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/>
-<path d="M1617.0,137.0 H1650.0 L1663.0,150.0 V195.0 H1617.0 Z" fill="#ffffff" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
-<path d="M1650.0,137.0 V150.0 H1663.0" fill="none" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
-<rect x="1612.0" y="164.0" width="56.0" height="18" rx="3" fill="#0072B2"/>
-<text x="1640.0" y="178.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">HTML</text>
-<text x="1674.0" y="162.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">Tracks, metagene,</text>
-<text x="1674.0" y="178.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">antisense</text>
-<path d="M1250.0,459.0 L1250.0,508.0" fill="none" stroke="#8c959f" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/>
-<path d="M1227.0,512.0 H1260.0 L1273.0,525.0 V570.0 H1227.0 Z" fill="#ffffff" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
-<path d="M1260.0,512.0 V525.0 H1273.0" fill="none" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
-<rect x="1222.0" y="539.0" width="56.0" height="18" rx="3" fill="#009E73"/>
-<text x="1250.0" y="553.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">CSV</text>
-<text x="1284.0" y="537.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">DEG tables</text>
-<path d="M1553.0,446.0 L1613.0,446.0" fill="none" stroke="#8c959f" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/>
-<path d="M1617.0,417.0 H1650.0 L1663.0,430.0 V475.0 H1617.0 Z" fill="#ffffff" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
-<path d="M1650.0,417.0 V430.0 H1663.0" fill="none" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
-<rect x="1612.0" y="444.0" width="56.0" height="18" rx="3" fill="#009E73"/>
-<text x="1640.0" y="458.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">HTML</text>
-<text x="1674.0" y="442.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">Volcano,</text>
-<text x="1674.0" y="458.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">MA, GSEA</text>
-<path d="M1663.8,603.0 L1687.0,629.4" fill="none" stroke="#8c959f" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/>
-<path d="M1691.0,631.0 H1724.0 L1737.0,644.0 V689.0 H1691.0 Z" fill="#ffffff" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
-<path d="M1724.0,631.0 V644.0 H1737.0" fill="none" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
-<rect x="1686.0" y="658.0" width="56.0" height="18" rx="3" fill="#CC79A7"/>
-<text x="1714.0" y="672.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">HTML</text>
-<line x1="48" y1="787.8" x2="1786.6" y2="787.8" stroke="#d0d7de" stroke-width="1.5"/>
-<line x1="48" y1="823.8" x2="94" y2="823.8" stroke="#0072B2" stroke-width="7" stroke-linecap="round"/>
-<text x="106.0" y="828.8" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#1f2328" text-anchor="start">Stranded tracks</text>
-<line x1="247.3" y1="823.8" x2="293.3" y2="823.8" stroke="#009E73" stroke-width="7" stroke-linecap="round"/>
-<text x="305.3" y="828.8" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#1f2328" text-anchor="start">Counts and differential expression</text>
-<line x1="587.5799999999999" y1="823.8" x2="633.5799999999999" y2="823.8" stroke="#CC79A7" stroke-width="7" stroke-linecap="round"/>
-<text x="645.6" y="828.8" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#1f2328" text-anchor="start">Quality control</text>
-<line x1="786.8799999999999" y1="823.8" x2="832.8799999999999" y2="823.8" stroke="#D55E00" stroke-width="7" stroke-linecap="round" stroke-dasharray="16 9"/>
-<text x="844.9" y="828.8" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#1f2328" text-anchor="start">Spike-in normalization (optional)</text>
-<circle cx="1129.7399999999998" cy="823.8" r="9" fill="#ffffff" stroke="#1f2328" stroke-width="3"/>
-<text x="1146.7" y="828.8" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#1f2328" text-anchor="start">Step</text>
-<circle cx="1216.4199999999998" cy="823.8" r="9" fill="#ffffff" stroke="#1f2328" stroke-width="3" stroke-dasharray="4 3"/>
-<text x="1233.4" y="828.8" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#1f2328" text-anchor="start">Optional step</text>
-<text x="48.0" y="857.8" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">Dashed steps are optional (trim, gsea_collections, spike_in.enabled). With the spike-in on, its counts set the track scale factors and, optionally, the DESeq2 size factors. Building the STAR index (build_star_index) is not shown.</text>
+<text x="48.0" y="84.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="400" fill="#59636e" text-anchor="start">TT-seq processing and analysis  ·  Snakemake 8</text>
+<path d="M86.0,394.0 L86.0,538.0 Q86.0,560.0 108.0,560.0 L1321.0,560.0 Q1343.0,560.0 1343.0,538.0 L1343.0,487.0" fill="none" stroke="#CC79A7" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M112.0,370.0 L614.0,370.0 Q636.0,370.0 651.6,385.6 L710.4,444.4 Q726.0,460.0 748.0,460.0 L1322.0,460.0" fill="none" stroke="#CC79A7" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M112.0,360.0 L614.0,360.0 Q636.0,360.0 658.0,360.0 L1236.0,360.0" fill="none" stroke="#009E73" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M112.0,350.0 L614.0,350.0 Q636.0,350.0 651.6,334.4 L710.4,275.6 Q726.0,260.0 748.0,260.0 L1236.0,260.0" fill="none" stroke="#0072B2" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M606.0,337.0 L606.0,182.0 Q606.0,160.0 628.0,160.0 L864.0,160.0 Q886.0,160.0 901.6,175.6 L978.0,252.0" fill="none" stroke="#ffffff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M606.0,337.0 L606.0,182.0 Q606.0,160.0 628.0,160.0 L864.0,160.0 Q886.0,160.0 901.6,175.6 L978.0,252.0" fill="none" stroke="#D55E00" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="16 9"/>
+<rect x="203.0" y="337.0" width="26" height="46.0" rx="13.0" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="216.0" y="406.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Trimming</text>
+<text x="216.0" y="423.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">fastp · optional</text>
+<rect x="333.0" y="337.0" width="26" height="46.0" rx="13.0" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="346.0" y="406.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Alignment</text>
+<text x="346.0" y="423.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">STAR</text>
+<rect x="463.0" y="337.0" width="26" height="46.0" rx="13.0" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="476.0" y="406.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">MAPQ filter</text>
+<text x="476.0" y="423.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">samtools</text>
+<rect x="593.0" y="337.0" width="26" height="46.0" rx="13.0" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="606.0" y="406.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Duplicates</text>
+<text x="606.0" y="423.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">Picard</text>
+<circle cx="756.0" cy="260.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="756.0" y="226.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Split strands</text>
+<text x="756.0" y="243.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">samtools</text>
+<circle cx="871.0" cy="260.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="871.0" y="226.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Merge</text>
+<text x="871.0" y="243.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">samtools</text>
+<circle cx="986.0" cy="260.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="986.0" y="296.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Scale factors</text>
+<text x="986.0" y="313.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">Python</text>
+<circle cx="1106.0" cy="260.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="1106.0" y="226.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Tracks</text>
+<text x="1106.0" y="243.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">bamCoverage</text>
+<circle cx="1236.0" cy="260.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="1236.0" y="226.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Stranded page</text>
+<text x="1236.0" y="243.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">Python</text>
+<circle cx="756.0" cy="360.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="756.0" y="396.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Counts</text>
+<text x="756.0" y="413.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">HTSeq</text>
+<circle cx="871.0" cy="360.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="871.0" y="396.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Matrix</text>
+<text x="871.0" y="413.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">Python</text>
+<circle cx="996.0" cy="360.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="996.0" y="396.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">DE analysis</text>
+<text x="996.0" y="413.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">DESeq2</text>
+<circle cx="1111.0" cy="360.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2" stroke-dasharray="4 3"/>
+<text x="1111.0" y="396.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">GSEA</text>
+<text x="1111.0" y="413.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">fgsea · optional</text>
+<circle cx="1236.0" cy="360.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="1236.0" y="396.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Explorer</text>
+<text x="1236.0" y="413.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">Python</text>
+<circle cx="936.0" cy="460.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="936.0" y="496.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">QC summary</text>
+<text x="936.0" y="513.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">Python</text>
+<circle cx="380.0" cy="560.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="380.0" y="596.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Read QC</text>
+<text x="380.0" y="613.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">FastQC</text>
+<circle cx="816.0" cy="160.0" r="11" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="816.0" y="126.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Spike-in counts</text>
+<text x="816.0" y="143.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">samtools idxstats</text>
+<rect x="1318.0" y="428.0" width="36" height="64.0" rx="18.0" fill="#ffffff" stroke="#1f2328" stroke-width="3.2"/>
+<text x="1367.0" y="456.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#1f2328" text-anchor="start">QC report</text>
+<text x="1367.0" y="475.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">+ MultiQC</text>
+<path d="M47.0,331.0 H80.0 L93.0,344.0 V389.0 H47.0 Z" fill="#ffffff" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
+<path d="M80.0,331.0 V344.0 H93.0" fill="none" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
+<rect x="42.0" y="358.0" width="56.0" height="18" rx="3" fill="#57606a"/>
+<text x="70.0" y="372.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">FASTQ</text>
+<text x="70.0" y="302.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Input</text>
+<text x="70.0" y="318.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="middle">Paired-end</text>
+<path d="M595.7,340.5 L558.0,305.8" fill="none" stroke="#8c959f" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/>
+<path d="M508.0,252.0 H541.0 L554.0,265.0 V310.0 H508.0 Z" fill="#ffffff" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
+<path d="M541.0,252.0 V265.0 H554.0" fill="none" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
+<rect x="503.0" y="279.0" width="56.0" height="18" rx="3" fill="#009E73"/>
+<text x="531.0" y="293.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">BAM</text>
+<text x="497.0" y="285.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="end">Filtered</text>
+<text x="497.0" y="301.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="end">alignments</text>
+<path d="M1106.0,247.0 L1106.0,181.0" fill="none" stroke="#8c959f" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/>
+<path d="M1083.0,119.0 H1116.0 L1129.0,132.0 V177.0 H1083.0 Z" fill="#ffffff" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
+<path d="M1116.0,119.0 V132.0 H1129.0" fill="none" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
+<rect x="1078.0" y="146.0" width="56.0" height="18" rx="3" fill="#0072B2"/>
+<text x="1106.0" y="160.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">bigWig</text>
+<text x="1140.0" y="144.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">Per strand</text>
+<path d="M1244.7,250.3 L1309.0,178.2" fill="none" stroke="#8c959f" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/>
+<path d="M1313.0,119.0 H1346.0 L1359.0,132.0 V177.0 H1313.0 Z" fill="#ffffff" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
+<path d="M1346.0,119.0 V132.0 H1359.0" fill="none" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
+<rect x="1308.0" y="146.0" width="56.0" height="18" rx="3" fill="#0072B2"/>
+<text x="1336.0" y="160.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">HTML</text>
+<text x="1370.0" y="144.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">Tracks,</text>
+<text x="1370.0" y="160.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">metagene</text>
+<path d="M1249.0,360.0 L1309.0,360.0" fill="none" stroke="#8c959f" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/>
+<path d="M1313.0,331.0 H1346.0 L1359.0,344.0 V389.0 H1313.0 Z" fill="#ffffff" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
+<path d="M1346.0,331.0 V344.0 H1359.0" fill="none" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
+<rect x="1308.0" y="358.0" width="56.0" height="18" rx="3" fill="#009E73"/>
+<text x="1336.0" y="372.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">HTML</text>
+<text x="1370.0" y="356.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">DEGs, GSEA</text>
+<path d="M1359.8,487.0 L1383.0,513.4" fill="none" stroke="#8c959f" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/>
+<path d="M1387.0,515.0 H1420.0 L1433.0,528.0 V573.0 H1387.0 Z" fill="#ffffff" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
+<path d="M1420.0,515.0 V528.0 H1433.0" fill="none" stroke="#1f2328" stroke-width="2.2" stroke-linejoin="round"/>
+<rect x="1382.0" y="542.0" width="56.0" height="18" rx="3" fill="#CC79A7"/>
+<text x="1410.0" y="556.0" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">HTML</text>
+<line x1="48" y1="641.8" x2="1455.7" y2="641.8" stroke="#d0d7de" stroke-width="1.5"/>
+<line x1="48" y1="677.8" x2="94" y2="677.8" stroke="#0072B2" stroke-width="7" stroke-linecap="round"/>
+<text x="106.0" y="682.8" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#1f2328" text-anchor="start">Stranded tracks</text>
+<line x1="247.3" y1="677.8" x2="293.3" y2="677.8" stroke="#009E73" stroke-width="7" stroke-linecap="round"/>
+<text x="305.3" y="682.8" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#1f2328" text-anchor="start">Counts and differential expression</text>
+<line x1="587.5799999999999" y1="677.8" x2="633.5799999999999" y2="677.8" stroke="#CC79A7" stroke-width="7" stroke-linecap="round"/>
+<text x="645.6" y="682.8" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#1f2328" text-anchor="start">Quality control</text>
+<line x1="786.8799999999999" y1="677.8" x2="832.8799999999999" y2="677.8" stroke="#D55E00" stroke-width="7" stroke-linecap="round" stroke-dasharray="16 9"/>
+<text x="844.9" y="682.8" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#1f2328" text-anchor="start">Spike-in normalization (optional)</text>
+<circle cx="1129.7399999999998" cy="677.8" r="9" fill="#ffffff" stroke="#1f2328" stroke-width="3"/>
+<text x="1146.7" y="682.8" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#1f2328" text-anchor="start">Step</text>
+<circle cx="1216.4199999999998" cy="677.8" r="9" fill="#ffffff" stroke="#1f2328" stroke-width="3" stroke-dasharray="4 3"/>
+<text x="1233.4" y="682.8" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#1f2328" text-anchor="start">Optional step</text>
+<text x="48.0" y="711.8" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#59636e" text-anchor="start">Dashed = optional (trim, gsea_collections, spike_in). The spike-in can also set the DESeq2 size factors.</text>
 </svg>

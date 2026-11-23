@@ -67,7 +67,7 @@ uses every sample separately.
 
 ## The pipeline at a glance
 
-![](img/ttpipe_subway.svg){.column-page fig-alt="TTpipe subway map: FASTQ to alignment, filtering and duplicate removal, then stranded tracks, counts and differential expression, and quality control, with optional trimming, GSEA and spike-in normalization."}
+![](img/ttpipe_subway.svg){fig-alt="TTpipe subway map: FASTQ to alignment, filtering and duplicate removal, then stranded tracks, counts and differential expression, and quality control, with optional trimming, GSEA and spike-in normalization."}
 
 Each coloured line is a branch of the pipeline and each stop a step; dashed
 stops and lines are optional. The map is drawn with
